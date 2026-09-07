@@ -27,8 +27,13 @@ class _008_Transformed_Textured_Quad
 
     private static readonly uint[] Indices =
     {
-        0, 1, 3,
-        1, 2, 3
+        // counter clockwise winding order
+        0, 3, 1,    // top right / bottom right / top left
+        3, 2, 1,     // bottom right / bottom left / top left
+
+        // clockwise winding order
+        //0, 1, 3,    // right top / right bottom / left top 
+        //3, 1, 2,    // right bottom / left top / left bottom 
     };
 
     private static Transform[] Transforms = new Transform[4];
@@ -330,7 +335,7 @@ void main()
         _gl.BindTexture(TextureTarget.Texture2D, _texture);
 
         // Draw our quad! We use a count of 6 here because we have 6 total vertices that makes up a quad.
-        _gl.DrawElements(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedInt, (void*)0);
+        //_gl.DrawElements(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedInt, (void*)0);
 
 
         for (int i = 0; i < Transforms.Length; i++)

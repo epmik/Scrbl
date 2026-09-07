@@ -5,15 +5,45 @@ using Silk.NET.Windowing;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using System;
+using System.Drawing;
 using System.IO;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Xml.Linq;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 using Color = System.Drawing.Color;
 
 namespace Scrbl.Tutorials;
 
-class _009_Transformed_Textured_And_Colored_Quad
+class _012_Dynamic_Lines
 {
+    enum BufferEntryType
+    {
+        Lines = PrimitiveType.Lines,
+        LineLoop = PrimitiveType.LineLoop,
+        LineStrip = PrimitiveType.LineStrip,
+
+        Triangles = PrimitiveType.Triangles,
+
+        TriangleFan = PrimitiveType.TriangleFan,
+
+        TriangleStrip = PrimitiveType.TriangleStrip,
+    }
+
+    struct BufferEntry
+    {
+        public uint Index;
+        public uint Count;
+
+        public BufferEntryType Type;
+
+        public BufferEntry()
+        {
+            Type = BufferEntryType.Triangles;
+        }
+    }
+
+
     private static IWindow _window;
     private static GL _gl;
 
@@ -24,6 +54,10 @@ class _009_Transformed_Textured_And_Colored_Quad
     private static uint _program;
 
     private static uint _texture;
+
+    private GLEnum FrontFace = GLEnum.Ccw;
+
+    private GLEnum CullFace = GLEnum.Back;
 
     private static readonly uint[] Indices =
     {
@@ -36,13 +70,27 @@ class _009_Transformed_Textured_And_Colored_Quad
         //3, 1, 2,    // right bottom / left top / left bottom 
     };
 
-    private static Transform[] Transforms = new Transform[4];
+    private Random _random = new Random();
+
+    //private static Transform[] Transforms = new Transform[1];
+
+    private double NextSpawnDelta = 0;
+    private double NextSpawnSpeed = 1.0;    // 1 second
+
+    //private double NextCullFaceDelta = 0;
+    //private double NextCullFaceSpeed = 4.0;    // 4 seconds
+
+    private List<BufferEntry> _bufferEntries = new List<BufferEntry>();
+
+    private int _bufferSize = 6 * 1024 * sizeof(float);
 
     public void Run(string[] args)
     {
         WindowOptions options = WindowOptions.Default;
+
         options.Size = new Vector2D<int>(800, 600);
-        options.Title = "_009_Transformed_Textured_And_Colored_Quad";
+        options.Title = "_011_FrontFace_And_CullFace";
+        options.VSync = true;
 
         _window = Window.Create(options);
 
@@ -55,7 +103,7 @@ class _009_Transformed_Textured_And_Colored_Quad
         _window.Dispose();
     }
 
-    private static unsafe void OnLoad()
+    private unsafe void OnLoad()
     {
         IInputContext input = _window.CreateInput();
         for (int i = 0; i < input.Keyboards.Count; i++)
@@ -71,26 +119,13 @@ class _009_Transformed_Textured_And_Colored_Quad
         _vao = _gl.GenVertexArray();
         _gl.BindVertexArray(_vao);
 
-        // The quad vertices data.
-        // You may have noticed an addition - texture coordinates!
-        // Texture coordinates are a value between 0-1 (see more later about this) which tell the GPU which part
-        // of the texture to use for each vertex.
-        float[] vertices =
-        {
-             // X Y Z                U V             R G B
-             0.5f,  0.5f, 0.0f,     1.0f, 1.0f,    0.0f, 0.0f, 0.0f,  // top right vertex (black)
-             0.5f, -0.5f, 0.0f,     1.0f, 0.0f,    1.0f, 1.0f, 0.0f,  // bottom right vertex (yellow)
-            -0.5f, -0.5f, 0.0f,     0.0f, 0.0f,    1.0f, 1.0f, 1.0f,  // bottom left vertex (white)
-            -0.5f,  0.5f, 0.0f,     0.0f, 1.0f,    1.0f, 0.0f, 0.0f,  // top left vertex (red)
-        };
-
         // Create the VBO.
         _vbo = _gl.GenBuffer();
         _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
 
         // Upload the vertices data to the VBO.
-        fixed (float* buf = vertices)
-            _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(vertices.Length * sizeof(float)), buf, BufferUsageARB.StaticDraw);
+        //fixed (float* buf = vertices)
+        _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)_bufferSize, (void*)null, BufferUsageARB.DynamicDraw);
 
         // Create the EBO.
         _ebo = _gl.GenBuffer();
@@ -126,13 +161,14 @@ void main()
 in vec2 fUv;
 in vec3 fColor;
 
-uniform sampler2D uTexture0;
+//uniform sampler2D uTexture0;
 
 out vec4 FragColor;
 
 void main()
 {
-    FragColor = texture(uTexture0, fUv) * vec4(fColor, 1.0);
+    //FragColor = texture(uTexture0, fUv) * vec4(fColor, 1.0);
+    FragColor = vec4(fColor, 1.0);
 }";
 
         // Create our vertex shader, and give it our vertex shader source code.
@@ -317,24 +353,91 @@ void main()
 
         //Unlike in the transformation, because of our abstraction, order doesn't matter here.
         //Translation.
-        Transforms[0] = new Transform();
-        Transforms[0].Position = new Vector3(0.5f, 0.5f, 0f);
+        //Transforms[0] = new Transform();
+        //Transforms[0].Position = new Vector3(0.5f, 0.5f, 0f);
         //Rotation.
-        Transforms[1] = new Transform();
-        Transforms[1].Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 1f);
-        //Scaling.
-        Transforms[2] = new Transform();
-        Transforms[2].Scale = 0.5f;
-        //Mixed transformation.
-        Transforms[3] = new Transform();
-        Transforms[3].Position = new Vector3(-0.5f, 0.5f, 0f);
-        Transforms[3].Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 1f);
-        Transforms[3].Scale = 0.5f;
+        //Transforms[1] = new Transform();
+        //Transforms[1].Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 1f);
+        ////Scaling.
+        //Transforms[2] = new Transform();
+        //Transforms[2].Scale = 0.5f;
+        ////Mixed transformation.
+        //Transforms[3] = new Transform();
+        //Transforms[3].Position = new Vector3(-0.5f, 0.5f, 0f);
+        //Transforms[3].Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 1f);
+        //Transforms[3].Scale = 0.5f;
+
+        _bufferEntries.Add(new BufferEntry() { Index = 0, Count = 2, Type = BufferEntryType.Lines });
+
+        Span<BufferEntry> bufferEntrySpan = CollectionsMarshal.AsSpan<BufferEntry>(_bufferEntries);
+
+        bufferEntrySpan[0].Type = BufferEntryType.Lines;
+        bufferEntrySpan[0].Count = 2;
     }
 
-    private static void OnUpdate(double dt) { }
+    private float RandomFloat()
+    {
+        return RandomFloat(0.0f, 1.0f);
+    }
 
-    private static unsafe void OnRender(double dt)
+    private float RandomFloat(float max)
+    {
+        return RandomFloat(0.0f, max);
+    }
+
+    private float RandomFloat(float min, float max)
+    {
+        return (float)(_random.NextDouble() * (max - min) + min);
+    }
+
+    private unsafe void OnUpdate(double dt) 
+    {
+        if (NextSpawnDelta <= 0) 
+        {
+            _gl.BindVertexArray(_vao);
+            _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
+            _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _ebo);
+
+            // The quad vertices data.
+            // You may have noticed an addition - texture coordinates!
+            // Texture coordinates are a value between 0-1 (see more later about this) which tell the GPU which part
+            // of the texture to use for each vertex.
+
+            var top = (float)_random.NextDouble();
+            var bottom = (float)_random.NextDouble() - 1.0f;
+            var right = (float)_random.NextDouble();
+            var left = (float)_random.NextDouble() - 1.0f;
+
+            float[] lines =
+            {
+                 // X Y Z                U V             R G B
+                 RandomFloat(-1, 1),  RandomFloat(-1, 1), 0.0f,  RandomFloat(0.5f, 1.0f), 0.0f, 0.0f,  // top right vertex (black)
+                 RandomFloat(-1, 1), RandomFloat(-1, 1), 0.0f,   RandomFloat(0.5f, 1.0f), RandomFloat(0.5f, 1.0f), 0.0f,  // bottom right vertex (yellow)
+            };
+
+            // Upload the vertices data to the VBO.
+            fixed (float* buf = lines)
+                _gl.BufferSubData(BufferTargetARB.ArrayBuffer, 0, (nuint)(lines.Length * sizeof(float)), buf);
+
+
+            // Unbind everything as we don't need it.
+            _gl.BindVertexArray(0);
+            _gl.BindBuffer(BufferTargetARB.ArrayBuffer, 0);
+            _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, 0);
+
+            //Transforms[0].Position = new Vector3((float)_random.NextDouble(), (float)_random.NextDouble(), 0f);
+
+            FrontFace = FrontFace == GLEnum.Ccw ? GLEnum.CW : GLEnum.Ccw;
+
+            Console.WriteLine($"FrontFace: {FrontFace} | CullFace: {CullFace}");
+
+            NextSpawnDelta += NextSpawnSpeed;
+        }
+
+        NextSpawnDelta -= dt;
+    }
+
+    private unsafe void OnRender(double dt)
     {
         // Clear the window to the color we set earlier.
         _gl.Clear(ClearBufferMask.ColorBufferBit);
@@ -343,23 +446,32 @@ void main()
         _gl.BindVertexArray(_vao);
         _gl.UseProgram(_program);
 
+        _gl.FrontFace(FrontFace);
+        _gl.CullFace(CullFace);
+        _gl.Enable(GLEnum.CullFace);
+
+        //_gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Line);
+
         // Much like our texture creation earlier, we must first set our active texture unit, and then bind the
         // texture to use it during draw!
-        _gl.ActiveTexture(TextureUnit.Texture0);
-        _gl.BindTexture(TextureTarget.Texture2D, _texture);
-
-        // Draw our quad! We use a count of 6 here because we have 6 total vertices that makes up a quad.
-        //_gl.DrawElements(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedInt, (void*)0);
+        //_gl.ActiveTexture(TextureUnit.Texture0);
+        //_gl.BindTexture(TextureTarget.Texture2D, _texture);
 
 
-        for (int i = 0; i < Transforms.Length; i++)
+        //for (int i = 0; i < Transforms.Length; i++)
+        //{
+        //    var m = Transforms[i].ViewMatrix;
+
+        //    int location = _gl.GetUniformLocation(_program, "uModel");
+        //    _gl.UniformMatrix4(location, 1, false, (float*)&m);
+
+        //    _gl.DrawElements(PrimitiveType.Triangles, (uint)Indices.Length, DrawElementsType.UnsignedInt, null);
+        //}
+
+        foreach(var bufferEntry in _bufferEntries)
         {
-            var m = Transforms[i].ViewMatrix;
-
             int location = _gl.GetUniformLocation(_program, "uModel");
-            _gl.UniformMatrix4(location, 1, false, (float*)&m);
-
-            _gl.DrawElements(PrimitiveType.Triangles, (uint)Indices.Length, DrawElementsType.UnsignedInt, null);
+            _gl.DrawElements((PrimitiveType)bufferEntry.Type, bufferEntry.Count, DrawElementsType.UnsignedInt, (void*)(bufferEntry.Index * sizeof(uint)));
         }
     }
 

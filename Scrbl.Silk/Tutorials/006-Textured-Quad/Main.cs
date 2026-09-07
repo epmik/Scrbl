@@ -80,12 +80,17 @@ class _006_Textured_Quad
         // The quad indices data.
         uint[] indices =
         {
-            0u, 1u, 3u,
-            1u, 2u, 3u
+            // counter clockwise winding order
+            0, 3, 1,    // top right / bottom right / top left
+            3, 2, 1,     // bottom right / bottom left / top left
+
+            // clockwise winding order
+            //0, 1, 3,    // right top / right bottom / left top 
+            //3, 1, 2,    // right bottom / left top / left bottom 
         };
 
-        // Create the EBO.
-        _ebo = _gl.GenBuffer();
+    // Create the EBO.
+    _ebo = _gl.GenBuffer();
         _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _ebo);
 
         // Upload the indices data to the EBO.

@@ -46,13 +46,16 @@ class _002_Hello_Quad
             -0.5f, -0.5f, 0.0f,
             -0.5f,  0.5f, 0.5f
         };
-
-    //Index data, uploaded to the EBO.
     private static readonly uint[] Indices =
-    {
-            0, 1, 3,
-            1, 2, 3
-        };
+     {
+        // counter clockwise winding order
+        0, 3, 1,    // top right / bottom right / top left
+        3, 2, 1,     // bottom right / bottom left / top left
+
+        // clockwise winding order
+        //0, 1, 3,    // right top / right bottom / left top 
+        //3, 1, 2,    // right bottom / left top / left bottom 
+    };
 
 
     public void Run(string[] args)

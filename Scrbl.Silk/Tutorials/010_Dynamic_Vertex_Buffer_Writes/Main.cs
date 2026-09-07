@@ -29,8 +29,13 @@ class _010_Dynamic_Vertex_Buffer_Writes
 
     private static readonly uint[] Indices =
     {
-        0, 1, 3,
-        1, 2, 3
+        // counter clockwise winding order
+        0, 3, 1,    // top right / bottom right / top left
+        3, 2, 1,     // bottom right / bottom left / top left
+
+        // clockwise winding order
+        //0, 1, 3,    // right top / right bottom / left top 
+        //3, 1, 2,    // right bottom / left top / left bottom 
     };
 
     private Random _random = new Random();
@@ -395,9 +400,6 @@ void main()
         _gl.ActiveTexture(TextureUnit.Texture0);
         _gl.BindTexture(TextureTarget.Texture2D, _texture);
 
-        // Draw our quad! We use a count of 6 here because we have 6 total vertices that makes up a quad.
-        _gl.DrawElements(PrimitiveType.Triangles, 6, DrawElementsType.UnsignedInt, (void*)0);
-
 
         for (int i = 0; i < Transforms.Length; i++)
         {
@@ -406,6 +408,7 @@ void main()
             int location = _gl.GetUniformLocation(_program, "uModel");
             _gl.UniformMatrix4(location, 1, false, (float*)&m);
 
+            //_gl.PolygonMode(GLEnum.FrontAndBack, PolygonMode.Line);
             _gl.DrawElements(PrimitiveType.Triangles, (uint)Indices.Length, DrawElementsType.UnsignedInt, null);
         }
     }
