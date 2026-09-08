@@ -21,7 +21,10 @@ namespace Scrbl
             //new Scrbl.Tutorials._008_Transformed_Textured_Quad().Run(args);
             //new Scrbl.Tutorials._009_Transformed_Textured_And_Colored_Quad().Run(args);
             //new Scrbl.Tutorials._010_Dynamic_Vertex_Buffer_Writes().Run(args);
-            new Scrbl.Tutorials._011_FrontFace_And_CullFace().Run(args);
+            //new Scrbl.Tutorials._011_FrontFace_And_CullFace().Run(args);
+            //new Scrbl.Tutorials._012_Static_Lines().Run(args);
+            //new Scrbl.Tutorials._013_Dynamic_Lines().Run(args);
+            new Scrbl.Tutorials._014_Dynamic_Lines_Orphaning_Buffer().Run(args);
         }
     }
 }
