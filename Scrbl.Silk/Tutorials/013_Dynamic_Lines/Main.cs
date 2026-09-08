@@ -369,10 +369,9 @@ class _013_Dynamic_Lines
 
             VertexBufferChunkList.Clear();
             VertexBufferBytesUsedCount = 0;
+            var vertexBufferIndex = 0;
 
             LineChunkCount = RandomInt(MinLineChunkCount, MaxLineChunkCount);
-
-            var vertexBufferIndex = 0;
 
             for (var i = 0; i < LineChunkCount; i++)
             {
@@ -457,7 +456,7 @@ class _013_Dynamic_Lines
                 float[] vertices =
                 {
                      // X Y Z                                                       R G B
-                     RandomFloat(-1.0f, 1.0f),  RandomFloat(1.0f, -1.0f), 0.0f,     0.0f, 0.0f, 1.0f, 1.0f,
+                     RandomFloat(-1.0f, 1.0f),  RandomFloat(1.0f, -1.0f), 0.0f,     1.0f, 1.0f, 1.0f, 1.0f,
                 };
 
                 var byteSize = (nuint)(vertices.Length * sizeof(float));

@@ -6,7 +6,6 @@ using Silk.NET.OpenGL.Extensions.ImGui;
 using Silk.NET.Windowing;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Scrbl.Tutorials;
 
@@ -111,10 +110,12 @@ class _014_Dynamic_Lines_Orphaning_Buffer
     //};
 
     private uint VertexElementCount = (3 + 4); // X Y Z + R G B A
+
     private uint VertexElementByteSize = (3 + 4) * sizeof(float); // X Y Z + R G B A
 
     private uint VertexBufferByteTotalSize = 1024 * (3 + 4) * sizeof(float);
-    private uint VertexBufferBytesUsedCount = 0;
+
+    private nint VertexBufferBytesUsedCount = 0;
 
     private List<VertexBufferChunk> VertexBufferChunkList = new List<VertexBufferChunk>();
 
@@ -193,6 +194,8 @@ class _014_Dynamic_Lines_Orphaning_Buffer
 
             // (Optional) Filter out less important notifications if your console gets spammy
             Gl.DebugMessageControl(DebugSource.DontCare, DebugType.DontCare, DebugSeverity.DebugSeverityNotification, 0, null, false);
+
+            Gl.Enable((EnableCap)9999);
         }
 
         //Creating a vertex array.
@@ -257,7 +260,6 @@ class _014_Dynamic_Lines_Orphaning_Buffer
         Gl.DeleteShader(fragmentShader);
 
         _imGuiController = new ImGuiController(Gl, window, input);
-
     }
 
     private unsafe void OnRender(double timeDelta) //Method needs to be unsafe due to draw elements.
@@ -292,6 +294,21 @@ class _014_Dynamic_Lines_Orphaning_Buffer
 
         // 3. Command the controller wrapper to render structures to the backbuffer
         _imGuiController.Render();
+    }
+
+    private unsafe void FlushVertexBufferChunkList()
+    {
+        int location = Gl.GetUniformLocation(Shader, "uModel");
+
+        foreach (var vertexBufferChunk in VertexBufferChunkList)
+        {
+            var t = vertexBufferChunk.Transform.ViewMatrix;
+
+            Gl.UniformMatrix4(location, 1, false, (float*)&t);
+
+            //Draw the geometry.
+            Gl.DrawArrays(vertexBufferChunk.PrimitiveType, vertexBufferChunk.Index, vertexBufferChunk.Count);
+        }
     }
 
     private unsafe void OnUpdate(double deltaTime)
@@ -334,8 +351,9 @@ class _014_Dynamic_Lines_Orphaning_Buffer
                     PrimitiveType = PrimitiveType.Lines,
                 };
 
-                AddVertexBufferChunkToListAndConditionalyFlush(chunk, new[]
-                {
+                //chunk.Transform.Position = new Vector3(0f, 0f, 0f);
+
+                AddVertexBufferChunkToList(chunk, new[] {
                      // X Y Z                                                       R G B
                      RandomFloat(-1.0f, 1.0f),  RandomFloat(0.5f, 1.0f), 0.0f,      1.0f, 0.0f, 0.0f, 1.0f,
                      RandomFloat(-1.0f, 1.0f),  RandomFloat(-0.5f, -1.0f), 0.0f,    1.0f, 1.0f, 0.0f, 1.0f,
@@ -361,11 +379,18 @@ class _014_Dynamic_Lines_Orphaning_Buffer
 
             for (var i = 0; i < lineLoopVertexCount; i++)
             {
-                AddVertexBufferChunkToListAndConditionalyFlush(chunk, new[]
+                float[] vertices =
                 {
                      // X Y Z                                                       R G B
                      RandomFloat(-1.0f, 1.0f),  RandomFloat(1.0f, -1.0f), 0.0f,     0.0f, 1.0f, 0.0f, 1.0f,
-                });
+                };
+
+                var byteSize = (nuint)(vertices.Length * sizeof(float));
+
+                fixed (float* buf = vertices)
+                    Gl.BufferSubData(BufferTargetARB.ArrayBuffer, VertexBufferBytesUsedCount, byteSize, buf);
+
+                VertexBufferBytesUsedCount += (nint)byteSize;
             }
 
 
@@ -380,21 +405,25 @@ class _014_Dynamic_Lines_Orphaning_Buffer
                 PrimitiveType = PrimitiveType.LineStrip,
             };
 
-            float[] vertices = new float[lineStripVertexCount * VertexElementCount];
+            VertexBufferChunkList.Add(chunk);
 
-            var j = 0;
+            vertexBufferIndex += lineStripVertexCount;
 
             for (var i = 0; i < lineStripVertexCount; i++)
             {
-                vertices[j++] = RandomFloat(-1.0f, 1.0f);
-                vertices[j++] = RandomFloat(1.0f, -1.0f);
-                vertices[j++] = 0.0f;
-                vertices[j++] = 0.0f;
-                vertices[j++] = 1.0f;
-                vertices[j++] = 0.0f;
-            }
+                float[] vertices =
+                {
+                     // X Y Z                                                       R G B
+                     RandomFloat(-1.0f, 1.0f),  RandomFloat(1.0f, -1.0f), 0.0f,     0.0f, 0.0f, 1.0f, 1.0f,
+                };
 
-            AddVertexBufferChunkToListAndConditionalyFlush(chunk, vertices);
+                var byteSize = (nuint)(vertices.Length * sizeof(float));
+
+                fixed (float* buf = vertices)
+                    Gl.BufferSubData(BufferTargetARB.ArrayBuffer, VertexBufferBytesUsedCount, byteSize, buf);
+
+                VertexBufferBytesUsedCount += (nint)byteSize;
+            }
 
             // ------------
 
@@ -433,42 +462,25 @@ class _014_Dynamic_Lines_Orphaning_Buffer
         }
     }
 
-
-    private unsafe void FlushVertexBufferChunkList()
-    {
-        int location = Gl.GetUniformLocation(Shader, "uModel");
-
-        foreach (var vertexBufferChunk in VertexBufferChunkList)
-        {
-            var t = vertexBufferChunk.Transform.ViewMatrix;
-
-            Gl.UniformMatrix4(location, 1, false, (float*)&t);
-
-            //Draw the geometry.
-            Gl.DrawArrays(vertexBufferChunk.PrimitiveType, vertexBufferChunk.Index, vertexBufferChunk.Count);
-        }
-    }
-
-    private unsafe void AddVertexBufferChunkToListAndConditionalyFlush(VertexBufferChunk chunk, ReadOnlySpan<float> data)
+    private unsafe void AddVertexBufferChunkToList(VertexBufferChunk chunk, ReadOnlySpan<float> data)
     {
         var bytes = chunk.Count * VertexElementByteSize;
 
-        if (VertexBufferBytesUsedCount + bytes > VertexBufferByteTotalSize)
-        {
-            FlushVertexBufferChunkList();
+        //if (VertexBufferBytesUsedCount + bytes > VertexBufferByteTotalSize)
+        //{
+        //    FlushVertexBufferChunkList();
 
-            VertexBufferBytesUsedCount = 0;
-            VertexBufferChunkList.Clear();
-        }
+        //    VertexBufferBytesUsedCount = 0;
+        //    VertexBufferChunkList.Clear();
+        //}
 
         fixed (void* ptr = data)
         {
             Gl.BufferSubData(BufferTargetARB.ArrayBuffer, (nint)VertexBufferBytesUsedCount, (nuint)bytes, ptr);
         }
 
-        VertexBufferBytesUsedCount += bytes;
+        VertexBufferBytesUsedCount += (nint)bytes;
     }
-
 
     //private unsafe void AddBufferData(ReadOnlySpan<float> data)
     //{
