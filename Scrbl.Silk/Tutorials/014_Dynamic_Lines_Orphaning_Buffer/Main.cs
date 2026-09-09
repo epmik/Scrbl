@@ -28,7 +28,7 @@ class _014_Dynamic_Lines_Orphaning_Buffer
     }
 
     // We must hold a reference to the delegate so the Garbage Collector doesn't destroy it
-    private static DebugProc _debugCallback;
+    //private static DebugProc _debugCallback;
 
     private static ImGuiController _imGuiController;
 
@@ -37,10 +37,20 @@ class _014_Dynamic_Lines_Orphaning_Buffer
     private static double _fpsTimer = 0.0;
     private static string _fpsText = "FPS: ...";
 
-    int MinLineChunkCount = 4;
-    int MaxLineChunkCount = 6;
+    int MinLineChunkCount = 24;
+    int MaxLineChunkCount = 68;
+
+    int MinLineLoopChunkCount = 2;
+
+    int MaxLineLoopChunkCount = 5;
+
+    int MinLineStripChunkCount = 2;
+
+    int MaxLineStripChunkCount = 5;
 
     int LineChunkCount = 0;
+    int LineLoopChunkCount = 0;
+    int LineStripChunkCount = 0;
 
     Random random = new Random();
 
@@ -88,34 +98,15 @@ class _014_Dynamic_Lines_Orphaning_Buffer
         }
         ";
 
-    ////Vertex data, uploaded to the VBO.
-    //private readonly float[] Vertices =
-    //{
-    //    //X Y Z                 // R G B A
-    //    // line
-    //    0.0f,  0.5f, 0.0f,     1.0f, 0.0f, 0.0f, 1.0f,
-    //    0.0f, -0.5f, 0.0f,     1.0f, 1.0f, 0.0f, 1.0f,
-
-
-    //    // line strip
-    //    0.0f,  0.5f, 0.0f,     1.0f, 0.0f, 0.0f, 1.0f,
-    //    0.0f, -0.5f, 0.0f,     1.0f, 1.0f, 0.0f, 1.0f,
-    //    -0.5f, -0.5f, 0.0f,     1.0f, 0.0f, 0.0f, 1.0f,
-    //    -0.5f,  0.5f, 0.0f,     1.0f, 1.0f, 0.0f, 1.0f,
-
-    //    // line loop
-    //    0.0f,  0.5f, 0.0f,     1.0f, 0.0f, 0.0f, 1.0f,
-    //    0.5f, -0.5f, 0.0f,     1.0f, 1.0f, 0.0f, 1.0f,
-    //    -0.5f, -0.5f, 0.0f,     1.0f, 0.0f, 0.0f, 1.0f,
-    //};
-
     private uint VertexElementCount = (3 + 4); // X Y Z + R G B A
 
     private uint VertexElementByteSize = (3 + 4) * sizeof(float); // X Y Z + R G B A
 
-    private uint VertexBufferByteTotalSize = 1024 * (3 + 4) * sizeof(float);
+    private uint VertexBufferByteTotalSize = 128 * (3 + 4) * sizeof(float);
 
-    private nint VertexBufferBytesUsedCount = 0;
+    private uint VertexBufferBytesUsedCount = 0;
+
+    private uint VertexBufferElementsUsedCount = 0;
 
     private List<VertexBufferChunk> VertexBufferChunkList = new List<VertexBufferChunk>();
 
@@ -189,13 +180,13 @@ class _014_Dynamic_Lines_Orphaning_Buffer
             Gl.Enable(EnableCap.DebugOutputSynchronous);
 
             // 3. Assign the callback delegate
-            _debugCallback = OnOpenGLDebugMessage;
-            Gl.DebugMessageCallback(_debugCallback, null);
+            Gl.DebugMessageCallback(OnOpenGLDebugMessage, null);
 
             // (Optional) Filter out less important notifications if your console gets spammy
             Gl.DebugMessageControl(DebugSource.DontCare, DebugType.DontCare, DebugSeverity.DebugSeverityNotification, 0, null, false);
 
-            Gl.Enable((EnableCap)9999);
+            // Trigger a debug message to ensure the callback is working
+            //Gl.Enable((EnableCap)9999);
         }
 
         //Creating a vertex array.
@@ -262,16 +253,38 @@ class _014_Dynamic_Lines_Orphaning_Buffer
         _imGuiController = new ImGuiController(Gl, window, input);
     }
 
-    private unsafe void OnRender(double timeDelta) //Method needs to be unsafe due to draw elements.
+    private unsafe void OnUpdate(double deltaTime)
+    {
+        // 1. Make sure to feed ImGui the latest time step input
+        _imGuiController.Update((float)deltaTime);
+
+        // 2. Increment frame counts and track accumulated delta time
+        _frameCount++;
+        _fpsTimer += deltaTime;
+
+        // 3. Throttle the string updates to maximum once per second
+        if (_fpsTimer >= 1.0)
+        {
+            double calculatedFps = _frameCount / _fpsTimer;
+            _fpsText = $"FPS: {calculatedFps:F1}"; // Formats to 1 decimal place
+
+            // Reset trackers for the next 1-second phase
+            _frameCount = 0;
+            _fpsTimer = 0.0;
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            DebugMacOsOpenGlErrors();
+        }
+    }
+
+    private unsafe void OnRender(double deltaTime) //Method needs to be unsafe due to draw elements.
     {
         //Clear the color channel.
         Gl.Clear((uint)ClearBufferMask.ColorBufferBit);
 
-        //Bind the geometry and shader.
-        Gl.BindVertexArray(Vao);
-        Gl.UseProgram(Shader);
-
-        FlushVertexBufferChunkList();
+        DrawAndUpdateVertexBufferChunkList(deltaTime);
 
         // 1. Declare your UI components using standard immediate-mode patterns
         // We set up a subtle, borderless debugging canvas in the top-left corner
@@ -296,147 +309,104 @@ class _014_Dynamic_Lines_Orphaning_Buffer
         _imGuiController.Render();
     }
 
-    private unsafe void FlushVertexBufferChunkList()
+    /// <summary>
+    /// DO NOT call DrawVertexBufferChunkList() from OnUpdate(), since this function can initiate drawing calls and those calls will be overwritten by clearing the color buffer in OnRender().
+    /// </summary>
+    /// <param name="deltaTime"></param>
+    private void DrawAndUpdateVertexBufferChunkList(double deltaTime)
     {
-        int location = Gl.GetUniformLocation(Shader, "uModel");
+        // DO NOT call DrawVertexBufferChunkList() from OnUpdate(), since this function can initiate drawing calls and those calls will be overwritten by clearing the color buffer in OnRender().
 
-        foreach (var vertexBufferChunk in VertexBufferChunkList)
-        {
-            var t = vertexBufferChunk.Transform.ViewMatrix;
-
-            Gl.UniformMatrix4(location, 1, false, (float*)&t);
-
-            //Draw the geometry.
-            Gl.DrawArrays(vertexBufferChunk.PrimitiveType, vertexBufferChunk.Index, vertexBufferChunk.Count);
-        }
-    }
-
-    private unsafe void OnUpdate(double deltaTime)
-    {
-        // 1. Make sure to feed ImGui the latest time step input
-        _imGuiController.Update((float)deltaTime);
-
-        // 2. Increment frame counts and track accumulated delta time
-        _frameCount++;
-        _fpsTimer += deltaTime;
-
-        // 3. Throttle the string updates to maximum once per second
-        if (_fpsTimer >= 1.0)
-        {
-            double calculatedFps = _frameCount / _fpsTimer;
-            _fpsText = $"FPS: {calculatedFps:F1}"; // Formats to 1 decimal place
-
-            // Reset trackers for the next 1-second phase
-            _frameCount = 0;
-            _fpsTimer = 0.0;
-        }
+        //Bind the geometry and shader.
+        Gl.BindVertexArray(Vao);
+        Gl.UseProgram(Shader);
 
         if (NextUpdateTimeDelta <= 0)
         {
-            VertexBufferChunk chunk;
-
-            VertexBufferChunkList.Clear();
-            VertexBufferBytesUsedCount = 0;
+            ResetVertexBufferChunkList();
 
             LineChunkCount = RandomInt(MinLineChunkCount, MaxLineChunkCount);
 
-            var vertexBufferIndex = 0;
-
             for (var i = 0; i < LineChunkCount; i++)
             {
-                chunk = new VertexBufferChunk()
-                {
-                    Index = vertexBufferIndex,
-                    Count = 2,
-                    PrimitiveType = PrimitiveType.Lines,
-                };
 
                 //chunk.Transform.Position = new Vector3(0f, 0f, 0f);
 
-                AddVertexBufferChunkToList(chunk, new[] {
+                AddVertexBufferChunkToListAndBufferData(PrimitiveType.Lines, new[] {
                      // X Y Z                                                       R G B
                      RandomFloat(-1.0f, 1.0f),  RandomFloat(0.5f, 1.0f), 0.0f,      1.0f, 0.0f, 0.0f, 1.0f,
                      RandomFloat(-1.0f, 1.0f),  RandomFloat(-0.5f, -1.0f), 0.0f,    1.0f, 1.0f, 0.0f, 1.0f,
                 });
-
-                vertexBufferIndex += (int)chunk.Count;
             }
 
             // ------------
 
-            var lineLoopVertexCount = RandomInt(3, 7);
+            LineLoopChunkCount = RandomInt(MinLineLoopChunkCount, MaxLineLoopChunkCount);
 
-            chunk = new VertexBufferChunk()
+            for (var k = 0; k < LineLoopChunkCount; k++)
             {
-                Index = vertexBufferIndex,
-                Count = (uint)lineLoopVertexCount,
-                PrimitiveType = PrimitiveType.LineLoop,
-            };
+                var lineLoopVertexCount = RandomInt(3, 7);
 
-            VertexBufferChunkList.Add(chunk);
+                float[] vertices = new float[lineLoopVertexCount * VertexElementCount];
 
-            vertexBufferIndex += lineLoopVertexCount;
+                var j = 0;
 
-            for (var i = 0; i < lineLoopVertexCount; i++)
-            {
-                float[] vertices =
+                for (var i = 0; i < lineLoopVertexCount; i++)
                 {
-                     // X Y Z                                                       R G B
-                     RandomFloat(-1.0f, 1.0f),  RandomFloat(1.0f, -1.0f), 0.0f,     0.0f, 1.0f, 0.0f, 1.0f,
-                };
+                    vertices[j++] = RandomFloat(-1.0f, 1.0f); // X
+                    vertices[j++] = RandomFloat(-1.0f, 1.0f); // Y
+                    vertices[j++] = 0; // Z
 
-                var byteSize = (nuint)(vertices.Length * sizeof(float));
+                    vertices[j++] = 0f; // R
+                    vertices[j++] = RandomFloat(0.85f, 1.0f); // G
+                    vertices[j++] = 0f; // B
+                    vertices[j++] = 1f; // A
+                }
 
-                fixed (float* buf = vertices)
-                    Gl.BufferSubData(BufferTargetARB.ArrayBuffer, VertexBufferBytesUsedCount, byteSize, buf);
-
-                VertexBufferBytesUsedCount += (nint)byteSize;
+                AddVertexBufferChunkToListAndBufferData(PrimitiveType.LineLoop, vertices);
             }
 
 
             // ------------
 
-            var lineStripVertexCount = RandomInt(3, 7);
+            LineStripChunkCount = RandomInt(MinLineStripChunkCount, MaxLineStripChunkCount);
 
-            chunk = new VertexBufferChunk()
+            for (var k = 0; k < LineStripChunkCount; k++)
             {
-                Index = vertexBufferIndex,
-                Count = (uint)lineStripVertexCount,
-                PrimitiveType = PrimitiveType.LineStrip,
-            };
+                var lineStripVertexCount = RandomInt(3, 7);
 
-            VertexBufferChunkList.Add(chunk);
+                var vertices = new float[lineStripVertexCount * VertexElementCount];
 
-            vertexBufferIndex += lineStripVertexCount;
+                var j = 0;
 
-            for (var i = 0; i < lineStripVertexCount; i++)
-            {
-                float[] vertices =
+                for (var i = 0; i < lineStripVertexCount; i++)
                 {
-                     // X Y Z                                                       R G B
-                     RandomFloat(-1.0f, 1.0f),  RandomFloat(1.0f, -1.0f), 0.0f,     0.0f, 0.0f, 1.0f, 1.0f,
-                };
+                    vertices[j++] = RandomFloat(-1.0f, 1.0f); // X
+                    vertices[j++] = RandomFloat(-1.0f, 1.0f); // Y
+                    vertices[j++] = 0; // Z
 
-                var byteSize = (nuint)(vertices.Length * sizeof(float));
+                    vertices[j++] = 0f; // R
+                    vertices[j++] = RandomFloat(0.50f, 1.0f); // G
+                    vertices[j++] = RandomFloat(0.85f, 1.0f); // B
+                    vertices[j++] = 1f; // A
+                }
 
-                fixed (float* buf = vertices)
-                    Gl.BufferSubData(BufferTargetARB.ArrayBuffer, VertexBufferBytesUsedCount, byteSize, buf);
-
-                VertexBufferBytesUsedCount += (nint)byteSize;
+                AddVertexBufferChunkToListAndBufferData(PrimitiveType.LineStrip, vertices);
             }
+
 
             // ------------
 
             NextUpdateTimeDelta += NextUpdateTimeout;
+
+            Console.WriteLine($"{VertexBufferBytesUsedCount} bytes used of {VertexBufferByteTotalSize} total bytes ({VertexBufferElementsUsedCount} elements)");
         }
 
         NextUpdateTimeDelta -= deltaTime;
 
-        if (OperatingSystem.IsMacOS())
-        {
-            DebugMacOsOpenGlErrors();
-        }
+        DrawVertexBufferChunkList();
     }
+
 
     private void OnFramebufferResize(Vector2D<int> newSize)
     {
@@ -462,65 +432,79 @@ class _014_Dynamic_Lines_Orphaning_Buffer
         }
     }
 
-    private unsafe void AddVertexBufferChunkToList(VertexBufferChunk chunk, ReadOnlySpan<float> data)
+    private unsafe void AddVertexBufferChunkToListAndBufferData(PrimitiveType primitiveType, ReadOnlySpan<float> data)
     {
-        var bytes = chunk.Count * VertexElementByteSize;
+        if(data.Length % VertexElementCount != 0)
+        {
+            throw new ArgumentException($"Data length {data.Length} is not a multiple of VertexElementCount {VertexElementCount}.", nameof(data));
+        }
 
-        //if (VertexBufferBytesUsedCount + bytes > VertexBufferByteTotalSize)
-        //{
-        //    FlushVertexBufferChunkList();
+        Gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo);
 
-        //    VertexBufferBytesUsedCount = 0;
-        //    VertexBufferChunkList.Clear();
-        //}
+        //var bytes = chunk.Count * VertexElementByteSize;
+        var bytes = (uint)(data.Length * sizeof(float));
+        var count = (uint)(data.Length / VertexElementCount);
+
+        if (VertexBufferBytesUsedCount + bytes > VertexBufferByteTotalSize)
+        {
+            Console.WriteLine("Vertex buffer full. Flushing current buffer and starting a new one.");
+
+            DrawVertexBufferChunkList();
+
+            OrphanVertexBuffer();
+
+            ResetVertexBufferChunkList();
+        }
 
         fixed (void* ptr = data)
         {
             Gl.BufferSubData(BufferTargetARB.ArrayBuffer, (nint)VertexBufferBytesUsedCount, (nuint)bytes, ptr);
         }
 
-        VertexBufferBytesUsedCount += (nint)bytes;
+        var chunk = new VertexBufferChunk()
+        {
+            Index = (int)VertexBufferElementsUsedCount,
+            Count = count,
+            PrimitiveType = primitiveType,
+        };
+
+        VertexBufferChunkList.Add(chunk);
+
+        VertexBufferBytesUsedCount += bytes;
+        VertexBufferElementsUsedCount += count;
     }
 
-    //private unsafe void AddBufferData(ReadOnlySpan<float> data)
-    //{
-    //    int incomingBytes = data.Length * sizeof(float);
+    private unsafe void DrawVertexBufferChunkList()
+    {
+        Gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo);
 
-    //    var vertexCount = VertexBufferBytesUsedCount / VertexElementByteSize;
+        int location = Gl.GetUniformLocation(Shader, "uModel");
 
-    //    if (VertexBufferBytesUsedCount + incomingBytes > VertexBufferByteTotalSize)
-    //    {
-    //        // VBO full: Draw what we have, then wrap back to 0. Do NOT orphan here!
-    //        FlushVertexBuffer((uint)vertexCount);
+        foreach (var vertexBufferChunk in VertexBufferChunkList)
+        {
+            var t = vertexBufferChunk.Transform.ViewMatrix;
 
-    //        VertexBufferBytesUsedCount = 0;
-    //    }
+            Gl.UniformMatrix4(location, 1, false, (float*)&t);
 
-    //    fixed (void* ptr = data)
-    //    {
-    //        Gl.BufferSubData(BufferTargetARB.ArrayBuffer, (nint)VertexBufferBytesUsedCount, (nuint)incomingBytes, ptr);
-    //    }
+            //Draw the geometry.
+            Gl.DrawArrays(vertexBufferChunk.PrimitiveType, vertexBufferChunk.Index, vertexBufferChunk.Count);
+        }
+    }
 
-    //    VertexBufferBytesUsedCount += incomingBytes;
-    //}
+    private unsafe void OrphanVertexBuffer()
+    {
+        Gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo);
+        Gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)VertexBufferByteTotalSize, null, BufferUsageARB.DynamicDraw);
+    }
 
-    //private unsafe void FlushVertexBuffer(int vertexOffset, uint vertexCount)
-    //{
-    //    if (vertexCount > 0)
-    //    {
-    //        Gl.DrawArrays(PrimitiveType.Points, vertexOffset, vertexCount);
-    //    }
-    //}
+    private unsafe void ResetVertexBufferChunkList()
+    {
+        VertexBufferBytesUsedCount = 0;
+        VertexBufferElementsUsedCount = 0;
+        VertexBufferChunkList.Clear();
+    }
 
-    //private unsafe void FlushVertexBuffer(uint vertexCount)
-    //{
-    //    FlushVertexBuffer(0, (uint)vertexCount);
-    //}
-
-    //private unsafe void FlushVertexBuffer()
-    //{
-    //    FlushVertexBuffer(0, (uint)VertexBufferBytesUsedCount / VertexElementByteSize);
-    //}
+    #region OpenGL Debug Functions
 
     private static unsafe void OnOpenGLDebugMessage(GLEnum source, GLEnum type, int id, GLEnum severity, int length, nint message, nint userParam)
     {
@@ -535,7 +519,7 @@ class _014_Dynamic_Lines_Orphaning_Buffer
             _ => ConsoleColor.Gray
         };
 
-        Console.WriteLine($"[GL DEBUG] {severity} | Type: {type} | Source: {source} | ID: {id}");
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] [GL DEBUG] {severity} | Type: {type} | Source: {source} | ID: {id}");
         Console.WriteLine($"Message: {msgStr}\n");
         Console.ResetColor();
     }
@@ -552,6 +536,8 @@ class _014_Dynamic_Lines_Orphaning_Buffer
             Console.ResetColor();
         }
     }
+
+    #endregion OpenGL Debug Functions
 
     int RandomInt()
     {
