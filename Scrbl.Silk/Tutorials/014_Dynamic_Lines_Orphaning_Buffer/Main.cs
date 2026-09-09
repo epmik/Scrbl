@@ -332,11 +332,14 @@ class _014_Dynamic_Lines_Orphaning_Buffer
 
                 //chunk.Transform.Position = new Vector3(0f, 0f, 0f);
 
-                AddVertexBufferChunkToListAndBufferData(PrimitiveType.Lines, new[] {
+                if (AddVertexBufferChunkToListAndBufferData(PrimitiveType.Lines, new[] {
                      // X Y Z                                                       R G B
                      RandomFloat(-1.0f, 1.0f),  RandomFloat(0.5f, 1.0f), 0.0f,      1.0f, 0.0f, 0.0f, 1.0f,
                      RandomFloat(-1.0f, 1.0f),  RandomFloat(-0.5f, -1.0f), 0.0f,    1.0f, 1.0f, 0.0f, 1.0f,
-                });
+                }))
+                {
+                    Console.WriteLine($"Chunks flushed while adding lines");
+                }
             }
 
             // ------------
@@ -363,7 +366,10 @@ class _014_Dynamic_Lines_Orphaning_Buffer
                     vertices[j++] = 1f; // A
                 }
 
-                AddVertexBufferChunkToListAndBufferData(PrimitiveType.LineLoop, vertices);
+                if (AddVertexBufferChunkToListAndBufferData(PrimitiveType.LineLoop, vertices))                
+                {
+                    Console.WriteLine($"Chunks flushed while adding line loops");
+                }
             }
 
 
@@ -391,7 +397,10 @@ class _014_Dynamic_Lines_Orphaning_Buffer
                     vertices[j++] = 1f; // A
                 }
 
-                AddVertexBufferChunkToListAndBufferData(PrimitiveType.LineStrip, vertices);
+                if(AddVertexBufferChunkToListAndBufferData(PrimitiveType.LineStrip, vertices))
+                {
+                    Console.WriteLine($"Chunks flushed while adding line strips");
+                }
             }
 
 
@@ -432,12 +441,14 @@ class _014_Dynamic_Lines_Orphaning_Buffer
         }
     }
 
-    private unsafe void AddVertexBufferChunkToListAndBufferData(PrimitiveType primitiveType, ReadOnlySpan<float> data)
+    private unsafe bool AddVertexBufferChunkToListAndBufferData(PrimitiveType primitiveType, ReadOnlySpan<float> data)
     {
         if(data.Length % VertexElementCount != 0)
         {
             throw new ArgumentException($"Data length {data.Length} is not a multiple of VertexElementCount {VertexElementCount}.", nameof(data));
         }
+
+        var flushed = false;
 
         Gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo);
 
@@ -454,6 +465,8 @@ class _014_Dynamic_Lines_Orphaning_Buffer
             OrphanVertexBuffer();
 
             ResetVertexBufferChunkList();
+
+            flushed = true;
         }
 
         fixed (void* ptr = data)
@@ -472,6 +485,8 @@ class _014_Dynamic_Lines_Orphaning_Buffer
 
         VertexBufferBytesUsedCount += bytes;
         VertexBufferElementsUsedCount += count;
+
+        return flushed;
     }
 
     private unsafe void DrawVertexBufferChunkList()
