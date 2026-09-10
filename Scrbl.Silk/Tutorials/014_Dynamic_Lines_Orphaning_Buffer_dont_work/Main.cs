@@ -614,7 +614,6 @@ class _014_Dynamic_Lines_Orphaning_Buffer
 
     private unsafe void DrawVertexBufferChunkList()
     {
-
         Gl.UseProgram(Shader);
 
         Gl.BindVertexArray(Vao);
@@ -633,13 +632,13 @@ class _014_Dynamic_Lines_Orphaning_Buffer
             Gl.DrawArrays(vertexBufferChunk.PrimitiveType, vertexBufferChunk.Index, vertexBufferChunk.Count);
         }
 
-        //if(PreviousVertexBufferBytesUsedCount != VertexBufferBytesUsedCount || PreviousVertexBufferElementsUsedCount != VertexBufferElementsUsedCount)
-        //{
-        //    PreviousVertexBufferBytesUsedCount = VertexBufferBytesUsedCount;
-        //    PreviousVertexBufferElementsUsedCount = VertexBufferElementsUsedCount;
+        if (PreviousVertexBufferBytesUsedCount != VertexBufferBytesUsedCount || PreviousVertexBufferElementsUsedCount != VertexBufferElementsUsedCount)
+        {
+            PreviousVertexBufferBytesUsedCount = VertexBufferBytesUsedCount;
+            PreviousVertexBufferElementsUsedCount = VertexBufferElementsUsedCount;
 
-        //    Console.WriteLine($"{VertexBufferBytesUsedCount} bytes used of {VertexBufferByteTotalSize} total bytes ({VertexBufferElementsUsedCount} elements)");
-        //}
+            Console.WriteLine($"{VertexBufferBytesUsedCount} bytes used of {VertexBufferByteTotalSize} total bytes ({VertexBufferElementsUsedCount} elements)");
+        }
     }
 
     private unsafe void OrphanVertexBuffer()
@@ -650,6 +649,8 @@ class _014_Dynamic_Lines_Orphaning_Buffer
         // we request a new memory buffer by calling glBufferData with the same size and usage flag and a null pointer for the data.
         Gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo);
         Gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)VertexBufferByteTotalSize, null, BufferUsageARB.DynamicDraw);
+
+        // TODO: it might be quicker to use Persistent Mapped Buffers https://www.cppstories.com/2015/01/persistent-mapped-buffers-in-opengl/
     }
 
     private void ResetVertexBufferChunkList()

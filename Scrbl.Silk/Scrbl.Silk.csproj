@@ -9,6 +9,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Tutorials\016_Vao_Vbo_DrawArrays_Tryout\**" />
+    <EmbeddedResource Remove="Tutorials\016_Vao_Vbo_DrawArrays_Tryout\**" />
+    <None Remove="Tutorials\016_Vao_Vbo_DrawArrays_Tryout\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Remove="BufferObject.cs" />
     <Compile Remove="Camera.cs" />
     <Compile Remove="GL.cs" />
