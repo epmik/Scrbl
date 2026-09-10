@@ -25,6 +25,10 @@ namespace Scrbl
             //new Scrbl.Tutorials._012_Static_Lines().Run(args);
             //new Scrbl.Tutorials._013_Dynamic_Lines().Run(args);
             new Scrbl.Tutorials._014_Dynamic_Lines_Orphaning_Buffer().Run(args);
+            //new Scrbl.Tutorials._015_Dynamic_Lines_Double_Buffer().Run(args);
+            //new Scrbl.Tutorials._016_Vao_Vbo_DrawArrays_Tryout().Run(args);
+
+            Console.ReadKey(false);
         }
     }
 }

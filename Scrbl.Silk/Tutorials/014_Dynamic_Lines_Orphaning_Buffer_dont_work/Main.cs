@@ -1,4 +1,7 @@
-﻿using ImGuiNET;
+﻿//
+// 2 VBO's, switching between VBP's one one is full
+//
+using ImGuiNET;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.OpenGL;
@@ -52,7 +55,9 @@ class _014_Dynamic_Lines_Orphaning_Buffer
     int LineLoopChunkCount = 0;
     int LineStripChunkCount = 0;
 
-    Random random = new Random();
+    int RandomSeed;
+
+    Random Random;
 
     private double NextUpdateTimeDelta = 0;
     private double NextUpdateTimeout = 4.0;    // 4 seconds
@@ -61,6 +66,14 @@ class _014_Dynamic_Lines_Orphaning_Buffer
     private static GL Gl;
 
     private static uint Vbo;
+    //private static uint Vbo2;
+    //private static uint ActiveVbo;
+
+    /// <summary>
+    /// On VAO's: https://stackoverflow.com/a/26559063/527843
+    /// The key thing to understand is that a VAO is a collection of state. It does not own any data. It's VBOs that own vertex data. 
+    /// A VAO, on the other hand, contains all the state used to describe where a draw call gets its vertex attributes from.
+    /// </summary>
     private static uint Vao;
     private static uint Shader;
 
@@ -98,19 +111,28 @@ class _014_Dynamic_Lines_Orphaning_Buffer
         }
         ";
 
-    private uint VertexElementCount = (3 + 4); // X Y Z + R G B A
+    private const uint VertexElementCount = (3 + 4); // X Y Z + R G B A
 
-    private uint VertexElementByteSize = (3 + 4) * sizeof(float); // X Y Z + R G B A
+    private const uint VertexElementByteSize = VertexElementCount * sizeof(float);
 
-    private uint VertexBufferByteTotalSize = 128 * (3 + 4) * sizeof(float);
+    private const uint VertexBufferByteTotalSize = 128 * VertexElementByteSize;
 
     private uint VertexBufferBytesUsedCount = 0;
+    private uint PreviousVertexBufferBytesUsedCount;
 
     private uint VertexBufferElementsUsedCount = 0;
+    private uint PreviousVertexBufferElementsUsedCount = 0;
 
     private List<VertexBufferChunk> VertexBufferChunkList = new List<VertexBufferChunk>();
 
     IInputContext input;
+
+    public _014_Dynamic_Lines_Orphaning_Buffer()
+    {
+        RandomSeed = Guid.NewGuid().GetHashCode();
+
+        Random = new Random(RandomSeed);
+    }
 
     public void Run(string[] args)
     {
@@ -193,11 +215,11 @@ class _014_Dynamic_Lines_Orphaning_Buffer
         Vao = Gl.GenVertexArray();
         Gl.BindVertexArray(Vao);
 
+
         //Initializing a vertex buffer that holds the vertex data.
         Vbo = Gl.GenBuffer(); //Creating the buffer.
         Gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo); //Binding the buffer.
-        Gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)VertexBufferByteTotalSize, null, BufferUsageARB.StreamDraw); //Setting buffer data.
-
+        Gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)VertexBufferByteTotalSize, null, BufferUsageARB.DynamicDraw); //Setting buffer data.
 
         //Tell opengl how to give the data to the shaders.
         Gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 7 * sizeof(float), null);
@@ -205,6 +227,7 @@ class _014_Dynamic_Lines_Orphaning_Buffer
 
         Gl.VertexAttribPointer(1, 4, VertexAttribPointerType.Float, false, 7 * sizeof(float), (void*)(3 * sizeof(float)));
         Gl.EnableVertexAttribArray(1);
+
 
 
         //Creating a vertex shader.
@@ -256,9 +279,7 @@ class _014_Dynamic_Lines_Orphaning_Buffer
     private unsafe void OnUpdate(double deltaTime)
     {
         // 1. Make sure to feed ImGui the latest time step input
-        //_imGuiController.Update((float)deltaTime);
-
-        UpdateVertexBufferChunkList(deltaTime);
+        _imGuiController.Update((float)deltaTime);
 
         // 2. Increment frame counts and track accumulated delta time
         _frameCount++;
@@ -283,35 +304,45 @@ class _014_Dynamic_Lines_Orphaning_Buffer
 
     private unsafe void OnRender(double deltaTime) //Method needs to be unsafe due to draw elements.
     {
-        //Clear the color channel.
+        if (NextUpdateTimeDelta <= 0)
+        {
+            RandomSeed = Guid.NewGuid().GetHashCode();
+
+            NextUpdateTimeDelta += NextUpdateTimeout;
+        }
+
+        NextUpdateTimeDelta -= deltaTime;
+
+
+        Random = new Random(RandomSeed);
+
+
         Gl.Clear((uint)ClearBufferMask.ColorBufferBit);
 
-        Gl.BindVertexArray(Vao);
-        Gl.UseProgram(Shader);
 
-        DrawVertexBufferChunkList();
+        GenerateAndDrawVertexBufferChunkList(deltaTime);
 
-        //// 1. Declare your UI components using standard immediate-mode patterns
-        //// We set up a subtle, borderless debugging canvas in the top-left corner
-        //ImGui.SetNextWindowPos(new System.Numerics.Vector2(10, 10), ImGuiCond.Always);
-        //ImGui.SetNextWindowBgAlpha(0.35f); // Semi-transparent overlay background
+        // 1. Declare your UI components using standard immediate-mode patterns
+        // We set up a subtle, borderless debugging canvas in the top-left corner
+        ImGui.SetNextWindowPos(new System.Numerics.Vector2(10, 10), ImGuiCond.Always);
+        ImGui.SetNextWindowBgAlpha(0.35f); // Semi-transparent overlay background
 
-        //var windowFlags = ImGuiWindowFlags.NoDecoration |
-        //                  ImGuiWindowFlags.AlwaysAutoResize |
-        //                  ImGuiWindowFlags.NoSavedSettings |
-        //                  ImGuiWindowFlags.NoFocusOnAppearing |
-        //                  ImGuiWindowFlags.NoNav |
-        //                  ImGuiWindowFlags.NoMove;
+        var windowFlags = ImGuiWindowFlags.NoDecoration |
+                          ImGuiWindowFlags.AlwaysAutoResize |
+                          ImGuiWindowFlags.NoSavedSettings |
+                          ImGuiWindowFlags.NoFocusOnAppearing |
+                          ImGuiWindowFlags.NoNav |
+                          ImGuiWindowFlags.NoMove;
 
-        //if (ImGui.Begin("FPS Overlay", windowFlags))
-        //{
-        //    // 2. Render text onto the active ImGui frame layer
-        //    ImGui.TextColored(new System.Numerics.Vector4(0.0f, 1.0f, 0.0f, 1.0f), _fpsText); // Green FPS Text
-        //    ImGui.End();
-        //}
+        if (ImGui.Begin("FPS Overlay", windowFlags))
+        {
+            // 2. Render text onto the active ImGui frame layer
+            ImGui.TextColored(new System.Numerics.Vector4(0.0f, 1.0f, 0.0f, 1.0f), _fpsText); // Green FPS Text
+            ImGui.End();
+        }
 
-        //// 3. Command the controller wrapper to render structures to the backbuffer
-        //_imGuiController.Render();
+        // 3. Command the controller wrapper to render structures to the backbuffer
+        _imGuiController.Render();
     }
 
     ///// <summary>
@@ -425,100 +456,87 @@ class _014_Dynamic_Lines_Orphaning_Buffer
     /// <summary>
     /// </summary>
     /// <param name="deltaTime"></param>
-    private void UpdateVertexBufferChunkList(double deltaTime)
+    private void GenerateAndDrawVertexBufferChunkList(double deltaTime)
     {
+        ResetVertexBufferChunkList();
 
-        if (NextUpdateTimeDelta <= 0)
+        LineChunkCount = RandomInt(MinLineChunkCount, MaxLineChunkCount);
+
+        for (var i = 0; i < LineChunkCount; i++)
         {
-            ResetVertexBufferChunkList();
 
-            LineChunkCount = RandomInt(MinLineChunkCount, MaxLineChunkCount);
-
-            for (var i = 0; i < LineChunkCount; i++)
+            if (AddVertexBufferChunkToListAndBufferData(PrimitiveType.Lines, new[] {
+                    // X Y Z                                                       R G B
+                    RandomFloat(-1.0f, 1.0f),  RandomFloat(0.5f, 1.0f), 0.0f,      1.0f, 0.0f, 0.0f, 1.0f,
+                    RandomFloat(-1.0f, 1.0f),  RandomFloat(-0.5f, -1.0f), 0.0f,    1.0f, 1.0f, 0.0f, 1.0f,
+            }))
             {
-
-                //chunk.Transform.Position = new Vector3(0f, 0f, 0f);
-
-                if (AddVertexBufferChunkToListAndBufferData(PrimitiveType.Lines, new[] {
-                     // X Y Z                                                       R G B
-                     RandomFloat(-1.0f, 1.0f),  RandomFloat(0.5f, 1.0f), 0.0f,      1.0f, 0.0f, 0.0f, 1.0f,
-                     RandomFloat(-1.0f, 1.0f),  RandomFloat(-0.5f, -1.0f), 0.0f,    1.0f, 1.0f, 0.0f, 1.0f,
-                }))
-                {
-                    Console.WriteLine($"Chunks flushed while adding lines");
-                }
+                Console.WriteLine($"Chunks flushed while adding lines");
             }
-
-            // ------------
-
-            LineLoopChunkCount = RandomInt(MinLineLoopChunkCount, MaxLineLoopChunkCount);
-
-            for (var k = 0; k < LineLoopChunkCount; k++)
-            {
-                var lineLoopVertexCount = RandomInt(3, 7);
-
-                float[] vertices = new float[lineLoopVertexCount * VertexElementCount];
-
-                var j = 0;
-
-                for (var i = 0; i < lineLoopVertexCount; i++)
-                {
-                    vertices[j++] = RandomFloat(-1.0f, 1.0f); // X
-                    vertices[j++] = RandomFloat(-1.0f, 1.0f); // Y
-                    vertices[j++] = 0; // Z
-
-                    vertices[j++] = 0f; // R
-                    vertices[j++] = RandomFloat(0.85f, 1.0f); // G
-                    vertices[j++] = 0f; // B
-                    vertices[j++] = 1f; // A
-                }
-
-                if (AddVertexBufferChunkToListAndBufferData(PrimitiveType.LineLoop, vertices))
-                {
-                    Console.WriteLine($"Chunks flushed while adding line loops");
-                }
-            }
-
-
-            // ------------
-
-            LineStripChunkCount = RandomInt(MinLineStripChunkCount, MaxLineStripChunkCount);
-
-            for (var k = 0; k < LineStripChunkCount; k++)
-            {
-                var lineStripVertexCount = RandomInt(3, 7);
-
-                var vertices = new float[lineStripVertexCount * VertexElementCount];
-
-                var j = 0;
-
-                for (var i = 0; i < lineStripVertexCount; i++)
-                {
-                    vertices[j++] = RandomFloat(-1.0f, 1.0f); // X
-                    vertices[j++] = RandomFloat(-1.0f, 1.0f); // Y
-                    vertices[j++] = 0; // Z
-
-                    vertices[j++] = 0f; // R
-                    vertices[j++] = RandomFloat(0.50f, 1.0f); // G
-                    vertices[j++] = RandomFloat(0.85f, 1.0f); // B
-                    vertices[j++] = 1f; // A
-                }
-
-                if (AddVertexBufferChunkToListAndBufferData(PrimitiveType.LineStrip, vertices))
-                {
-                    Console.WriteLine($"Chunks flushed while adding line strips");
-                }
-            }
-
-
-            // ------------
-
-            NextUpdateTimeDelta += NextUpdateTimeout;
-
-            Console.WriteLine($"{VertexBufferBytesUsedCount} bytes used of {VertexBufferByteTotalSize} total bytes ({VertexBufferElementsUsedCount} elements)");
         }
 
-        NextUpdateTimeDelta -= deltaTime;
+        // ------------
+
+        LineLoopChunkCount = RandomInt(MinLineLoopChunkCount, MaxLineLoopChunkCount);
+
+        for (var k = 0; k < LineLoopChunkCount; k++)
+        {
+            var lineLoopVertexCount = RandomInt(3, 7);
+
+            float[] vertices = new float[lineLoopVertexCount * VertexElementCount];
+
+            var j = 0;
+
+            for (var i = 0; i < lineLoopVertexCount; i++)
+            {
+                vertices[j++] = RandomFloat(-1.0f, 1.0f); // X
+                vertices[j++] = RandomFloat(-1.0f, 1.0f); // Y
+                vertices[j++] = 0; // Z
+
+                vertices[j++] = 0f; // R
+                vertices[j++] = RandomFloat(0.85f, 1.0f); // G
+                vertices[j++] = 0f; // B
+                vertices[j++] = 1f; // A
+            }
+
+            if (AddVertexBufferChunkToListAndBufferData(PrimitiveType.LineLoop, vertices))
+            {
+                Console.WriteLine($"Chunks flushed while adding line loops");
+            }
+        }
+
+
+        // ------------
+
+        LineStripChunkCount = RandomInt(MinLineStripChunkCount, MaxLineStripChunkCount);
+
+        for (var k = 0; k < LineStripChunkCount; k++)
+        {
+            var lineStripVertexCount = RandomInt(3, 7);
+
+            var vertices = new float[lineStripVertexCount * VertexElementCount];
+
+            var j = 0;
+
+            for (var i = 0; i < lineStripVertexCount; i++)
+            {
+                vertices[j++] = RandomFloat(-1.0f, 1.0f); // X
+                vertices[j++] = RandomFloat(-1.0f, 1.0f); // Y
+                vertices[j++] = 0; // Z
+
+                vertices[j++] = 0f; // R
+                vertices[j++] = RandomFloat(0.50f, 1.0f); // G
+                vertices[j++] = RandomFloat(0.85f, 1.0f); // B
+                vertices[j++] = 1f; // A
+            }
+
+            if (AddVertexBufferChunkToListAndBufferData(PrimitiveType.LineStrip, vertices))
+            {
+                Console.WriteLine($"Chunks flushed while adding line strips");
+            }
+        }
+
+        DrawVertexBufferChunkList();
     }
 
     private void OnFramebufferResize(Vector2D<int> newSize)
@@ -547,18 +565,12 @@ class _014_Dynamic_Lines_Orphaning_Buffer
 
     private unsafe bool AddVertexBufferChunkToListAndBufferData(PrimitiveType primitiveType, ReadOnlySpan<float> data)
     {
-        if(data.Length % VertexElementCount != 0)
+        if (data.Length % VertexElementCount != 0)
         {
             throw new ArgumentException($"Data length {data.Length} is not a multiple of VertexElementCount {VertexElementCount}.", nameof(data));
         }
 
         var flushed = false;
-
-        Gl.UseProgram(Shader);
-
-        Gl.BindVertexArray(Vao);
-
-        Gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo);
 
         //var bytes = chunk.Count * VertexElementByteSize;
         var bytes = (uint)(data.Length * sizeof(float));
@@ -574,8 +586,11 @@ class _014_Dynamic_Lines_Orphaning_Buffer
 
             ResetVertexBufferChunkList();
 
-            flushed = true;
+            flushed = true;     
         }
+
+
+        Gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo);
 
         fixed (void* ptr = data)
         {
@@ -599,11 +614,12 @@ class _014_Dynamic_Lines_Orphaning_Buffer
 
     private unsafe void DrawVertexBufferChunkList()
     {
+
         Gl.UseProgram(Shader);
-        
+
         Gl.BindVertexArray(Vao);
 
-        Gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo);
+        //Gl.BindBuffer(BufferTargetARB.ArrayBuffer, ActiveVbo);
 
         int location = Gl.GetUniformLocation(Shader, "uModel");
 
@@ -616,15 +632,27 @@ class _014_Dynamic_Lines_Orphaning_Buffer
             //Draw the geometry.
             Gl.DrawArrays(vertexBufferChunk.PrimitiveType, vertexBufferChunk.Index, vertexBufferChunk.Count);
         }
+
+        //if(PreviousVertexBufferBytesUsedCount != VertexBufferBytesUsedCount || PreviousVertexBufferElementsUsedCount != VertexBufferElementsUsedCount)
+        //{
+        //    PreviousVertexBufferBytesUsedCount = VertexBufferBytesUsedCount;
+        //    PreviousVertexBufferElementsUsedCount = VertexBufferElementsUsedCount;
+
+        //    Console.WriteLine($"{VertexBufferBytesUsedCount} bytes used of {VertexBufferByteTotalSize} total bytes ({VertexBufferElementsUsedCount} elements)");
+        //}
     }
 
     private unsafe void OrphanVertexBuffer()
     {
+        // buffer orphaning is a performance optimization technique used to avoid CPU-GPU synchronization stalls when updating data in a Buffer Object (like a VBO or UBO).
+        // It works by telling the OpenGL driver to abandon the current memory allocation under the hood and replace it with a brand-new, clean block of memory.
+        // This allows the GPU to continue using the old buffer while we prepare a new one.
+        // we request a new memory buffer by calling glBufferData with the same size and usage flag and a null pointer for the data.
         Gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo);
-        Gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)VertexBufferByteTotalSize, null, BufferUsageARB.StreamDraw);
+        Gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)VertexBufferByteTotalSize, null, BufferUsageARB.DynamicDraw);
     }
 
-    private unsafe void ResetVertexBufferChunkList()
+    private void ResetVertexBufferChunkList()
     {
         VertexBufferBytesUsedCount = 0;
         VertexBufferElementsUsedCount = 0;
@@ -678,7 +706,7 @@ class _014_Dynamic_Lines_Orphaning_Buffer
 
     int RandomInt(int min, int max)
     {
-        return random.Next(min, max);
+        return Random.Next(min, max);
     }
 
     float RandomFloat()
@@ -693,6 +721,6 @@ class _014_Dynamic_Lines_Orphaning_Buffer
 
     float RandomFloat(float min, float max)
     {
-        return min + (max - min) * random.NextSingle();
+        return min + (max - min) * Random.NextSingle();
     }
 }
