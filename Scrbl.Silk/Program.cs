@@ -28,7 +28,8 @@ namespace Scrbl
             //new Scrbl.Tutorials._016_Vao_Vbo_DrawArrays_Tryout().Run(args);
             //new Scrbl.Tutorials._017_Frame_Buffer().Run(args);
             //new Scrbl.Tutorials._017_Frame_Buffer_Struct().Run(args);
-            new Scrbl.Tutorials._017_Frame_Buffer_Struct_Multi_Samples().Run(args);
+            //new Scrbl.Tutorials._017_Frame_Buffer_Struct_Multi_Samples().Run(args);
+            new Scrbl.Tutorials._018_Frame_Buffer_Zoom_Scroll_Drags().Run(args);
 
             //Console.Write("Press a key to exit...");
             //Console.ReadKey(false);

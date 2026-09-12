@@ -17,7 +17,7 @@ using System.Runtime.InteropServices;
 
 namespace Scrbl.Tutorials;
 
-class _017_Frame_Buffer_Struct_Multi_Samples
+class _018_Frame_Buffer_Zoom_Scroll_Drags
 {
     struct VertexBufferChunk
     {
@@ -64,8 +64,8 @@ class _017_Frame_Buffer_Struct_Multi_Samples
 
     Random Random;
 
-    double NextUpdateTimeDelta = 4.0;
-    double NextUpdateTimeout = 4.0;    // 4 seconds
+    double NextUpdateTimeDelta = 12.0;
+    double NextUpdateTimeout = 12.0;    // 4 seconds
 
     IWindow window;
     GL Gl;
@@ -174,7 +174,16 @@ class _017_Frame_Buffer_Struct_Multi_Samples
 
     IInputContext input;
 
-    public _017_Frame_Buffer_Struct_Multi_Samples()
+    Vector2D<float> _cameraPos = new Vector2D<float>(2000, 2000); // Start centered
+    float _zoomLevel = 1.0f; // 1.0 means 1 FBO pixel = 1 Screen pixel
+    Vector2D<float> _lastMousePos;
+    bool _isDragging = false;
+
+    private Vector2D<float> _dragStartMousePos; // Store where the mouse clicked down
+    private Vector2D<float> _dragStartCameraPos; // Store where the camera was when clicked down
+
+
+    public _018_Frame_Buffer_Zoom_Scroll_Drags()
     {
         Random = new Random(RandomSeed);
 
@@ -182,7 +191,7 @@ class _017_Frame_Buffer_Struct_Multi_Samples
 
         _multiSampledFrameBuffer.Width = (uint)(_windowWidth * _frameBufferScale);
         _multiSampledFrameBuffer.Height = (uint)(_windowHeight * _frameBufferScale);
-        _multiSampledFrameBuffer.Samples = 0;
+        _multiSampledFrameBuffer.Samples = 8;
 
         _intermediateFrameBuffer = new FrameBuffer();
 
@@ -198,7 +207,7 @@ class _017_Frame_Buffer_Struct_Multi_Samples
         var options = WindowOptions.Default;
 
         options.Size = new Vector2D<int>(_windowWidth, _windowHeight);
-        options.Title = "_017_Frame_Buffer_Struct";
+        options.Title = "_018_Frame_Buffer_Zoom_Scroll_Drags";
         options.VSync = false;
 
         bool isMac = OperatingSystem.IsMacOS();
@@ -240,6 +249,12 @@ class _017_Frame_Buffer_Struct_Multi_Samples
         {
             input.Keyboards[i].KeyDown += KeyDown;
         }
+
+        var mouse = input.Mice[0];
+        mouse.MouseDown += OnMouseDown;
+        mouse.MouseUp += OnMouseUp;
+        mouse.MouseMove += OnMouseMove;
+        mouse.Scroll += OnMouseScroll;
 
         //Getting the opengl api for drawing to the screen.
         GL = Gl = GL.GetApi(window);
@@ -346,7 +361,7 @@ class _017_Frame_Buffer_Struct_Multi_Samples
 
         #endregion Setup Framebuffer
 
-        BindScreenFramebuffer();
+        BindScreenFramebuffer(true);
 
     }
 
@@ -454,8 +469,9 @@ class _017_Frame_Buffer_Struct_Multi_Samples
 
         NextUpdateTimeDelta -= deltaTime;
 
-
         Random = new Random(RandomSeed);
+
+        UpdateCameraPosition();
 
         BindFramebuffer(_multiSampledFrameBuffer, true);
 
@@ -464,6 +480,37 @@ class _017_Frame_Buffer_Struct_Multi_Samples
         Gl.Clear((uint)ClearBufferMask.ColorBufferBit);
 
         GenerateAndDrawVertexBufferChunkList(deltaTime);
+
+
+        float viewWidth = window.Size.X * _zoomLevel;
+        float viewHeight = window.Size.Y * _zoomLevel;
+
+        int srcX0 = (int)(_cameraPos.X - viewWidth / 2.0f);
+        int srcY0 = (int)(_cameraPos.Y - viewHeight / 2.0f);
+        int srcX1 = srcX0 + (int)viewWidth;
+        int srcY1 = srcY0 + (int)viewHeight;
+
+        BindScreenFramebuffer(true);
+
+        Gl.ClearColor(0.1f, 0.1f, 0.1f, 0.0f);
+
+        Gl.Clear((uint)ClearBufferMask.ColorBufferBit);
+
+        BlitFramebuffer(_multiSampledFrameBuffer, _intermediateFrameBuffer);
+
+        Gl.BindFramebuffer(FramebufferTarget.ReadFramebuffer, _intermediateFrameBuffer.Fbo);
+        Gl.BindFramebuffer(FramebufferTarget.DrawFramebuffer, 0);
+
+        // 4. Perform the Pixel Perfect Blit
+        // Use Nearest filter to retain crisp 1:1 pixel alignments without blur blending artifacting
+        Gl.BlitFramebuffer(
+            srcX0, srcY0, srcX1, srcY1,               // Source bounds (FBO)
+            0, 0, window.Size.X, window.Size.Y,     // Destination bounds (Screen window)
+            (uint)ClearBufferMask.ColorBufferBit,
+            BlitFramebufferFilter.Nearest             // Prevents filtering blur at pixel levels
+        );
+
+        BindScreenFramebuffer(true);
 
         // 1. Declare your UI components using standard immediate-mode patterns
         // We set up a subtle, borderless debugging canvas in the top-left corner
@@ -487,16 +534,6 @@ class _017_Frame_Buffer_Struct_Multi_Samples
         // 3. Command the controller wrapper to render structures to the backbuffer
         _imGuiController.Render();
 
-        if(_multiSampledFrameBuffer.Samples > 1)
-        {
-            BlitFramebuffer(_multiSampledFrameBuffer, _intermediateFrameBuffer);
-
-            BlitFramebufferToScreen(_intermediateFrameBuffer);
-        }
-        else
-        {
-            BlitFramebufferToScreen(_multiSampledFrameBuffer);
-        }
     }
 
     /// <summary>
@@ -590,7 +627,7 @@ class _017_Frame_Buffer_Struct_Multi_Samples
         _windowWidth = size.X;
         _windowHeight = size.Y;
 
-        BindScreenFramebuffer();
+        BindScreenFramebuffer(false);
 
         ResizeFrameBuffer(ref _multiSampledFrameBuffer, (int)(_windowWidth * _frameBufferScale), (int)(_windowHeight * _frameBufferScale));
 
@@ -601,7 +638,7 @@ class _017_Frame_Buffer_Struct_Multi_Samples
     {
         //_imGuiController?.Dispose();
 
-        BindScreenFramebuffer();
+        BindScreenFramebuffer(false);
 
         DisposeFramebuffer(_multiSampledFrameBuffer);
         DisposeFramebuffer(_intermediateFrameBuffer);
@@ -611,6 +648,8 @@ class _017_Frame_Buffer_Struct_Multi_Samples
         Gl.DeleteProgram(Shader);
         Gl?.Dispose();
     }
+
+    #region Input Event Handlers
 
     private void KeyDown(IKeyboard keyboard, Key key, int arg3)
     {
@@ -622,10 +661,121 @@ class _017_Frame_Buffer_Struct_Multi_Samples
         if (key == Key.S)
         {
             SaveFramebuffer(Gl, (int)_multiSampledFrameBuffer.Width, (int)_multiSampledFrameBuffer.Height, $"framebuffer_{DateTime.Now:yyyyMMdd_HHmmss}.png");
-
-            BindScreenFramebuffer();
         }
     }
+    private void OnMouseDown(IMouse mouse, MouseButton button)
+    {
+        if (button == MouseButton.Left)
+        {
+            _isDragging = true;
+            // 1. Snapshot the mouse position at the EXACT frame click occurs
+            _dragStartMousePos = new Vector2D<float>(mouse.Position.X, mouse.Position.Y);
+            // 2. Snapshot the current camera position anchor
+            _dragStartCameraPos = _cameraPos;
+        }
+    }
+
+    private void OnMouseUp(IMouse mouse, MouseButton button)
+    {
+        if (button == MouseButton.Left) _isDragging = false;
+    }
+
+    // We no longer manipulate the camera directly in OnMouseMove!
+    private void OnMouseMove(IMouse mouse, Vector2 _position)
+    {
+        // Leave this empty or use it for non-drag related features
+    }
+
+    // Perform this inside your Frame Update or right before rendering
+    public void UpdateCameraPosition()
+    {
+        if (!_isDragging) return;
+
+        // 3. Get the absolute live mouse position for this current frame loop
+        var currentMouse = new Vector2D<float>(input.Mice[0].Position.X, input.Mice[0].Position.Y);
+
+        // 4. Calculate total distance traveled since the drag started
+        Vector2D<float> totalDeltaScreen = currentMouse - _dragStartMousePos;
+
+        // 5. Apply the delta back to the original snapshot position 
+        // This prevents incremental round-off errors and event lagging completely
+        float newCamX = _dragStartCameraPos.X - (totalDeltaScreen.X * _zoomLevel);
+        float newCamY = _dragStartCameraPos.Y + (totalDeltaScreen.Y * _zoomLevel); // Adjust sign for GL coordinates
+
+        _cameraPos = new Vector2D<float>(newCamX, newCamY);
+
+        ClampCamera();
+    }
+
+
+    //private void OnMouseScroll(IMouse mouse, ScrollWheel scroll)
+    //{
+    //    // Zoom sensitivity modifier
+    //    float zoomFactor = scroll.Y > 0 ? 0.9f : 1.1f;
+    //    _zoomLevel *= zoomFactor;
+
+    //    // Cap zoom levels (e.g., max close-up 0.1x scale up to 4x total overview map)
+    //    _zoomLevel = Math.Clamp(_zoomLevel, 0.1f, 4.0f);
+    //    ClampCamera();
+    //}
+
+    private void OnMouseScroll(IMouse mouse, ScrollWheel scroll)
+    {
+        // 1. Get the current cursor position in Screen coordinates
+        Vector2D<float> mouseScreenPos = new Vector2D<float>(mouse.Position.X, mouse.Position.Y);
+
+        // 2. Convert Screen coordinates to current Framebuffer (World) coordinates
+        // We measure from the center of the current camera view
+        float viewWidthBefore = window.Size.X * _zoomLevel;
+        float viewHeightBefore = window.Size.Y * _zoomLevel;
+
+        // Normalise screen space (-0.5 to 0.5 relative to window center)
+        float ndcX = (mouseScreenPos.X / window.Size.X) - 0.5f;
+        // Flip Y because Screen 0 is top, OpenGL FBO 0 is bottom
+        float ndcY = 0.5f - (mouseScreenPos.Y / window.Size.Y);
+
+        // Find the exact FBO pixel under the mouse before zooming
+        float mouseFboX = _cameraPos.X + (ndcX * viewWidthBefore);
+        float mouseFboY = _cameraPos.Y + (ndcY * viewHeightBefore);
+
+        // 3. Calculate the new zoom level
+        float zoomFactor = scroll.Y > 0 ? 0.9f : 1.1f;
+        float newZoomLevel = Math.Clamp(_zoomLevel * zoomFactor, 0.5f, 4.0f);
+
+        // 4. Calculate the new viewport dimensions
+        float viewWidthAfter = window.Size.X * newZoomLevel;
+        float viewHeightAfter = window.Size.Y * newZoomLevel;
+
+        // 5. Shift the camera position so the FBO pixel stays under the cursor
+        // Target position = Mouse FBO point minus the scaled offset from the screen center
+        _cameraPos.X = mouseFboX - (ndcX * viewWidthAfter);
+        _cameraPos.Y = mouseFboY - (ndcY * viewHeightAfter);
+
+        // Update zoom level state
+        _zoomLevel = newZoomLevel;
+
+        // 6. If you are currently dragging while zooming, reset the drag anchors
+        // This stops the map from snapping unexpectedly if you scroll mid-drag
+        if (_isDragging)
+        {
+            _dragStartMousePos = mouseScreenPos;
+            _dragStartCameraPos = _cameraPos;
+        }
+
+        ClampCamera();
+    }
+
+    private void ClampCamera()
+    {
+        // Enforce boundary bounds so camera viewport doesn't go off the large FBO edges
+        float halfWidth = (window.Size.X * _zoomLevel) / 2.0f;
+        float halfHeight = (window.Size.Y * _zoomLevel) / 2.0f;
+
+        _cameraPos.X = Math.Clamp(_cameraPos.X, halfWidth, _multiSampledFrameBuffer.Width - halfWidth);
+        _cameraPos.Y = Math.Clamp(_cameraPos.Y, halfHeight, _multiSampledFrameBuffer.Height - halfHeight);
+    }
+
+    #endregion Input Event Handlers
 
     private unsafe bool AddVertexBufferChunkToListAndBufferData(PrimitiveType primitiveType, ReadOnlySpan<float> data)
     {
@@ -834,12 +984,7 @@ class _017_Frame_Buffer_Struct_Multi_Samples
 
     void BindFramebuffer(in FrameBuffer frameBuffer, FramebufferTarget framebufferTarget, bool bindViewport)
     {
-        GL.BindFramebuffer(framebufferTarget, frameBuffer.Fbo);
-
-        if (bindViewport)
-        {
-            GL.Viewport(0, 0, frameBuffer.Width, frameBuffer.Height);
-        }
+        BindFramebuffer(GL, frameBuffer.Fbo, framebufferTarget, bindViewport ? (int)frameBuffer.Width : 0, bindViewport ? (int)frameBuffer.Height : 0);
     }
 
     void BindFramebuffer(in FrameBuffer frameBuffer, bool bindViewport)
@@ -855,6 +1000,21 @@ class _017_Frame_Buffer_Struct_Multi_Samples
     void BindDrawFramebuffer(in FrameBuffer frameBuffer, bool bindViewport)
     {
         BindFramebuffer(frameBuffer, FramebufferTarget.DrawFramebuffer, bindViewport);
+    }
+
+    public void BindScreenFramebuffer(bool bindViewport)
+    {
+        BindFramebuffer(Gl, 0, FramebufferTarget.Framebuffer, bindViewport ? window.Size.X : 0, bindViewport ? window.Size.Y : 0);
+    }
+
+    static void BindFramebuffer(GL Gl, uint fbo, FramebufferTarget framebufferTarget, int width, int height)
+    {
+        Gl.BindFramebuffer(framebufferTarget, fbo);
+
+        if (width != 0 && height != 0)
+        {
+            Gl.Viewport(0, 0, (uint)width, (uint)height);
+        }
     }
 
     /// <summary>
@@ -886,11 +1046,6 @@ class _017_Frame_Buffer_Struct_Multi_Samples
         {
             GL.DeleteRenderbuffer(frameBuffer.FboStencilAttachment);
         }
-    }
-
-    public void BindScreenFramebuffer()
-    {
-        GL.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
     }
 
     public static void BlitFramebuffer(
