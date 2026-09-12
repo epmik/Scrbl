@@ -485,10 +485,8 @@ class _018_Frame_Buffer_Zoom_Scroll_Drags
         float viewWidth = window.Size.X * _zoomLevel;
         float viewHeight = window.Size.Y * _zoomLevel;
 
-        int srcX0 = (int)(_cameraPos.X - viewWidth / 2.0f);
-        int srcY0 = (int)(_cameraPos.Y - viewHeight / 2.0f);
-        int srcX1 = srcX0 + (int)viewWidth;
-        int srcY1 = srcY0 + (int)viewHeight;
+        int sourceX = (int)(_cameraPos.X - viewWidth / 2.0f);
+        int sourceY = (int)(_cameraPos.Y - viewHeight / 2.0f);
 
         BindScreenFramebuffer(true);
 
@@ -498,17 +496,19 @@ class _018_Frame_Buffer_Zoom_Scroll_Drags
 
         BlitFramebuffer(_multiSampledFrameBuffer, _intermediateFrameBuffer);
 
-        Gl.BindFramebuffer(FramebufferTarget.ReadFramebuffer, _intermediateFrameBuffer.Fbo);
-        Gl.BindFramebuffer(FramebufferTarget.DrawFramebuffer, 0);
+        BlitFramebufferToScreen(_intermediateFrameBuffer, sourceX, sourceY, (int)viewWidth, (int)viewHeight);
 
-        // 4. Perform the Pixel Perfect Blit
-        // Use Nearest filter to retain crisp 1:1 pixel alignments without blur blending artifacting
-        Gl.BlitFramebuffer(
-            srcX0, srcY0, srcX1, srcY1,               // Source bounds (FBO)
-            0, 0, window.Size.X, window.Size.Y,     // Destination bounds (Screen window)
-            (uint)ClearBufferMask.ColorBufferBit,
-            BlitFramebufferFilter.Nearest             // Prevents filtering blur at pixel levels
-        );
+        //Gl.BindFramebuffer(FramebufferTarget.ReadFramebuffer, _intermediateFrameBuffer.Fbo);
+        //Gl.BindFramebuffer(FramebufferTarget.DrawFramebuffer, 0);
+
+        //// 4. Perform the Pixel Perfect Blit
+        //// Use Nearest filter to retain crisp 1:1 pixel alignments without blur blending artifacting
+        //Gl.BlitFramebuffer(
+        //    srcX0, srcY0, srcX1, srcY1,               // Source bounds (FBO)
+        //    0, 0, window.Size.X, window.Size.Y,     // Destination bounds (Screen window)
+        //    (uint)ClearBufferMask.ColorBufferBit,
+        //    BlitFramebufferFilter.Nearest             // Prevents filtering blur at pixel levels
+        //);
 
         BindScreenFramebuffer(true);
 
@@ -1055,6 +1055,18 @@ class _018_Frame_Buffer_Zoom_Scroll_Drags
         int sourceWidth, int sourceHeight,
         int targetWidth, int targetHeight)
     {
+        BlitFramebuffer(gl, sourceHandle, targetHandle, 0, 0, sourceWidth, sourceHeight, 0, 0, targetWidth, targetHeight);
+    }
+
+    public static void BlitFramebuffer(
+        GL gl,
+        uint sourceHandle,
+        uint targetHandle,
+        int sourceX, int sourceY,
+        int sourceWidth, int sourceHeight,
+        int targetX, int targetY,
+        int targetWidth, int targetHeight)
+    {
         // 1. Bind the offscreen FBO as the READ source
         gl.BindFramebuffer(FramebufferTarget.ReadFramebuffer, sourceHandle);
 
@@ -1063,13 +1075,11 @@ class _018_Frame_Buffer_Zoom_Scroll_Drags
 
         // 3. Perform the blit with scaling
         gl.BlitFramebuffer(
-            0, 0, sourceWidth, sourceHeight,  // Source rectangle (Bottom-Left to Top-Right)
-            0, 0, targetWidth, targetHeight,        // Destination rectangle (Bottom-Left to Top-Right)
+            sourceX, sourceY, sourceX + sourceWidth, sourceY + sourceHeight,
+            targetX, targetY, targetX + targetWidth, targetY + targetHeight,
             ClearBufferMask.ColorBufferBit,         // Mask specifying which buffers to copy
             BlitFramebufferFilter.Linear            // Filter for scaling (Linear or Nearest)
         );
-
-        //gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
     }
 
     void BlitFramebuffer(
@@ -1082,7 +1092,17 @@ class _018_Frame_Buffer_Zoom_Scroll_Drags
     void BlitFramebufferToScreen(
         in FrameBuffer frameBuffer)
     {
-        BlitFramebufferToScreen(Gl, frameBuffer.Fbo, (int)frameBuffer.Width, (int)frameBuffer.Height);
+        BlitFramebuffer(Gl, frameBuffer.Fbo, 0, 0, 0, (int)frameBuffer.Width, (int)frameBuffer.Height, 0, 0, window.Size.X, window.Size.Y);
+    }
+
+    void BlitFramebufferToScreen(
+        in FrameBuffer sourceFrameBuffer,
+        int sourceX,
+        int sourceY,
+        int sourceWidth,
+        int sourceHeight)
+    {
+        BlitFramebuffer(Gl, sourceFrameBuffer.Fbo, 0, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, window.Size.X, window.Size.Y);
     }
 
     public void BlitFramebufferToScreen(
