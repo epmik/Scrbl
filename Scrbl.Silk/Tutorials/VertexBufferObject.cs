@@ -7,6 +7,7 @@ using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using System;
 using System.Diagnostics;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Scrbl.Tutorials;
 
@@ -53,10 +54,7 @@ public class VertexBufferObject : IDisposable
 
         var byteSize = (uint)(data.Length * sizeof(float));
 
-        if (byteSize % ElementSizeInBytes != 0)
-        {
-            throw new ArgumentException($"{data.Length} * sizeof(float) {data.Length} is not a multiple of ElementSizeInBytes {ElementSizeInBytes}.", nameof(data));
-        }
+        AssertAlignment(data, byteSize);
 
         _gl.BufferSubData(BufferTargetARB.ArrayBuffer, (nint)UsedBytes, data);
         
@@ -96,6 +94,15 @@ public class VertexBufferObject : IDisposable
         if (!_isBound)
         {
             throw new InvalidOperationException("Cannot perform operation: The VertexBufferObject is NOT bound.");
+        }
+    }
+
+    [Conditional("DEBUG")]
+    private void AssertAlignment(ReadOnlySpan<float> data, uint byteSize)
+    {
+        if (byteSize % ElementSizeInBytes != 0)
+        {
+            throw new ArgumentException($"{data.Length} * sizeof(float) {data.Length} is not a multiple of ElementSizeInBytes {ElementSizeInBytes}.", nameof(data));
         }
     }
 

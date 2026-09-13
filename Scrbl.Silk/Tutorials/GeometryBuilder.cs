@@ -62,7 +62,7 @@ namespace Scrbl.Tutorials
 
         private GeometryBuilder AddVertex(float x, float y, float z)
         {
-            int offset = _vertexCount * 7 * sizeof(float);
+            int offset = _vertexCount * 7;
 
             if (offset >= _buffer.Length)
             {

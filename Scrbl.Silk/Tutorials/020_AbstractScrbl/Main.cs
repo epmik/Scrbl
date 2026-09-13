@@ -21,6 +21,19 @@ class _020_AbstractScrbl : AbstractScrbl
 {
     private int _randomSeed = 10241024;
     private Random _random;
+    int MinLineChunkCount = 24;
+    int MaxLineChunkCount = 68;
+
+    int MinLineLoopChunkCount = 2;
+
+    int MaxLineLoopChunkCount = 5;
+
+    int MinLineStripChunkCount = 2;
+
+    int MaxLineStripChunkCount = 5;
+
+    double NextUpdateTimeDelta = 12.0;
+    double NextUpdateTimeout = 12.0;    // 4 seconds
 
     public _020_AbstractScrbl()
     {
@@ -30,47 +43,82 @@ class _020_AbstractScrbl : AbstractScrbl
     }
 
     // Optional Update Lifecycle Hook
-    void Update(double deltaTime)
+    public void Update(double deltaTime)
     {
-        _random = new Random(_randomSeed);
-        // Compute game logic, modify coordinates or shapes over time here
-    }
+        if (NextUpdateTimeDelta <= 0)
+        {
+            _randomSeed = Guid.NewGuid().GetHashCode();
 
-    float RandomFloat(float min, float max)
-    {
-        return min + (max - min) * _random.NextSingle();
+            NextUpdateTimeDelta += NextUpdateTimeout;
+        }
+
+        NextUpdateTimeDelta -= deltaTime;
+
+        _random = new Random(_randomSeed);
     }
 
     // Dynamic Render Execution Step Loop Context 
-    void Render(double deltaTime)
+    public void Render(double deltaTime)
     {
-        // 1. Draw a basic multi-colored line pair segment
-        Line()
-            .Color(1.0f, 0.0f, 0.0f, 1.0f)
-            .From(RandomFloat(-1, 1), RandomFloat(-1, 1))
-            .Color(1.0f, 1.0f, 0.0f, 1.0f)
-            .To(RandomFloat(-1, 1), RandomFloat(-1, 1));
+        var lineChunkCount = RandomInt(MinLineChunkCount, MaxLineChunkCount);
 
-        // 2. Chained lines auto-fall back directly into standard high performance LineStrips
-        Line()
-            .Color(0.0f, 0.0f, 1.0f, 1.0f)
-            .From(RandomFloat(-1, 1), RandomFloat(-1, 1))
-            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-            .To(RandomFloat(-1, 1), RandomFloat(-1, 1));
+        for (var i = 0; i < lineChunkCount; i++)
+        {
+            Line()
+                .Color(1.0f, 0.0f, 0.0f, 1.0f)
+                .From(RandomFloat(-1, 1), RandomFloat(0.5f, 1.0f))
+                .Color(1.0f, 1.0f, 0.0f, 1.0f)
+                .To(RandomFloat(-1, 1), RandomFloat(-0.5f, -1.0f));
+        }
 
-        // 3. Appending a explicit .Close() commands converts it cleanly to a complete LineLoop structure
-        Line()
-            .Color(0.0f, 1.0f, 1.0f, 1.0f)
-            .From(RandomFloat(-1, 1), RandomFloat(-1, 1))
-            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-            .Close();
+        //var lineLoopChunkCount = RandomInt(MinLineLoopChunkCount, MaxLineLoopChunkCount);
+
+        //for (var k = 0; k < lineLoopChunkCount; k++)
+        //{
+        //    var lineLoopVertexCount = RandomInt(3, 7);
+
+        //    for (var i = 0; i < lineLoopVertexCount; i++)
+        //    {
+        //        Line()
+        //            .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.50f, 1.0f), 1.0f)
+        //            .From(RandomFloat(-1, 1), RandomFloat(-1, 1))
+        //            .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.50f, 1.0f), 1.0f)
+        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
+        //            .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.50f, 1.0f), 1.0f)
+        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
+        //            .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.50f, 1.0f), 1.0f)
+        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
+        //            .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.50f, 1.0f), 1.0f)
+        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
+        //            .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.50f, 1.0f), 1.0f)
+        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
+        //            .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.50f, 1.0f), 1.0f)
+        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
+        //            .Close();
+        //    }
+        //}
+
+        //var lineStripChunkCount = RandomInt(MinLineStripChunkCount, MaxLineStripChunkCount);
+
+        //for (var k = 0; k < lineStripChunkCount; k++)
+        //{
+        //    var lineStripVertexCount = RandomInt(3, 7);
+
+        //    for (var i = 0; i < lineStripVertexCount; i++)
+        //    {
+        //        Line()
+        //            .Color(0.0f, RandomFloat(0.85f, 1.0f), 1.0f, 1.0f)
+        //            .From(RandomFloat(-1, 1), RandomFloat(-1, 1))
+        //            .Color(0.0f, RandomFloat(0.85f, 1.0f), 1.0f, 1.0f)
+        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
+        //            .Color(0.0f, RandomFloat(0.85f, 1.0f), 1.0f, 1.0f)
+        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
+        //            .Color(0.0f, RandomFloat(0.85f, 1.0f), 1.0f, 1.0f)
+        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
+        //            .Color(0.0f, RandomFloat(0.85f, 1.0f), 1.0f, 1.0f)
+        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1));
+        //    }
+        //}
     }
 
     // Optional Event Callbacks managed smoothly via engine reflection tracking layers
@@ -83,4 +131,38 @@ class _020_AbstractScrbl : AbstractScrbl
     {
         Console.WriteLine("Cleaning custom application configurations.");
     }
+
+    #region Random Functions
+
+    int RandomInt()
+    {
+        return RandomInt(0, int.MaxValue);
+    }
+
+    int RandomInt(int max)
+    {
+        return RandomInt(0, max);
+    }
+
+    int RandomInt(int min, int max)
+    {
+        return _random.Next(min, max);
+    }
+
+    float RandomFloat()
+    {
+        return RandomFloat(0f, 1f);
+    }
+
+    float RandomFloat(float max)
+    {
+        return RandomFloat(0f, max);
+    }
+
+    float RandomFloat(float min, float max)
+    {
+        return min + (max - min) * _random.NextSingle();
+    }
+
+    #endregion Random Functions
 }

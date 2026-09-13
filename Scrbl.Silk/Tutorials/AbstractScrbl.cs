@@ -215,14 +215,14 @@ namespace Scrbl.Tutorials
                 _chunks.Clear();
             }
 
-            _vbo.Write(vertexData);
-
             _chunks.Add(new VertexBufferChunk
             {
                 Index = (int)_vbo.UsedElements,
                 Count = (uint)(vertexData.Length / VertexElementCount),
                 PrimitiveType = primitiveType
             });
+
+            _vbo.Write(vertexData);
         }
 
         private unsafe void FlushCurrentBatches()
@@ -230,6 +230,7 @@ namespace Scrbl.Tutorials
             if (_chunks.Count == 0) return;
 
             _shader.Use();
+            
             _vao.Bind();
 
             // Using an Identity Matrix layout for Orthographic view rules matching configuration scale
@@ -238,6 +239,7 @@ namespace Scrbl.Tutorials
             foreach (var chunk in _chunks)
             {
                 _shader.SetUniform("uModel", chunk.Transform.ViewMatrix.ToSpan()); // Or your custom Matrix uniform handling mapping properties directly
+
                 Gl.DrawArrays(chunk.PrimitiveType, chunk.Index, chunk.Count);
             }
         }
