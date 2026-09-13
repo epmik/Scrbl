@@ -19,20 +19,23 @@ namespace Scrbl.Tutorials;
 
 class _020_AbstractScrbl : AbstractScrbl
 {
-    private readonly Random _random;
+    private int _randomSeed = 10241024;
+    private Random _random;
 
     public _020_AbstractScrbl()
     {
         Width = 1024f;
         Height = 1024f;
-        _random = new Random(10241024);
+        _random = new Random(_randomSeed);
     }
 
     // Optional Update Lifecycle Hook
     void Update(double deltaTime)
     {
+        _random = new Random(_randomSeed);
         // Compute game logic, modify coordinates or shapes over time here
     }
+
     float RandomFloat(float min, float max)
     {
         return min + (max - min) * _random.NextSingle();
@@ -50,7 +53,7 @@ class _020_AbstractScrbl : AbstractScrbl
 
         // 2. Chained lines auto-fall back directly into standard high performance LineStrips
         Line()
-            .Color(0.0f, 1.0f, 0.0f, 1.0f)
+            .Color(0.0f, 0.0f, 1.0f, 1.0f)
             .From(RandomFloat(-1, 1), RandomFloat(-1, 1))
             .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
             .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
@@ -59,8 +62,11 @@ class _020_AbstractScrbl : AbstractScrbl
 
         // 3. Appending a explicit .Close() commands converts it cleanly to a complete LineLoop structure
         Line()
-            .Color(0.0f, 0.5f, 1.0f, 1.0f)
+            .Color(0.0f, 1.0f, 1.0f, 1.0f)
             .From(RandomFloat(-1, 1), RandomFloat(-1, 1))
+            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
+            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
+            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
             .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
             .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
             .To(RandomFloat(-1, 1), RandomFloat(-1, 1))

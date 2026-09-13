@@ -58,15 +58,12 @@ namespace Scrbl.Tutorials
         {
             _forcedType = PrimitiveType.LineLoop;
             _hasForcedType = true;
-            // Explicitly calling Close() means the line is done, we can flush early!
-            Flush();
         }
 
         private GeometryBuilder AddVertex(float x, float y, float z)
         {
-            int offset = _vertexCount * (int)AbstractScrbl.VertexElementCount;
+            int offset = _vertexCount * 7 * sizeof(float);
 
-            // Dynamic safety check: if we hit buffer capacity limits, flush immediately
             if (offset >= _buffer.Length)
             {
                 Flush();
@@ -82,6 +79,7 @@ namespace Scrbl.Tutorials
             _buffer[offset + 6] = _a;
 
             _vertexCount++;
+
             return this;
         }
 
