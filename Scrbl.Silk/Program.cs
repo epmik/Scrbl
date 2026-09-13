@@ -30,7 +30,8 @@ namespace Scrbl
             //new Scrbl.Tutorials._017_Frame_Buffer_Struct().Run(args);
             //new Scrbl.Tutorials._017_Frame_Buffer_Struct_Multi_Samples().Run(args);
             //new Scrbl.Tutorials._018_Frame_Buffer_Zoom_Scroll_Drags().Run(args);
-            new Scrbl.Tutorials._018_Frame_Buffer_Zoom_Scroll_Drag_FrameBufferCamera().Run(args);
+            //new Scrbl.Tutorials._018_Frame_Buffer_Zoom_Scroll_Drag_FrameBufferCamera().Run(args);
+            new Scrbl.Tutorials._019_Frame_Vertex_Index_BufferObjects().Run(args);
 
             //Console.Write("Press a key to exit...");
             //Console.ReadKey(false);

@@ -17,7 +17,7 @@ using System.Runtime.InteropServices;
 
 namespace Scrbl.Tutorials;
 
-class _018_Frame_Buffer_Zoom_Scroll_Drag_FrameBufferCamera
+class _019_Frame_Vertex_Index_BufferObjects
 {
     struct VertexBufferChunk
     {
@@ -70,16 +70,9 @@ class _018_Frame_Buffer_Zoom_Scroll_Drag_FrameBufferCamera
     IWindow window;
     GL Gl;
 
-    uint Vbo;
+    private VertexArrayObject _vao;
+    private VertexBufferObject _vbo;
 
-
-    /// <summary>
-    /// On VAO's: https://stackoverflow.com/a/26559063/527843
-    /// The key thing to understand is that a VAO is a collection of state. It does not own any data. It's VBOs that own vertex data. 
-    /// A VAO, on the other hand, contains all the state used to describe where a draw call gets its vertex attributes from.
-    /// </summary>
-    static uint Vao;
-    //static uint Shader;
     int _windowWidth = 800;
     int _windowHeight = 600;
 
@@ -93,14 +86,15 @@ class _018_Frame_Buffer_Zoom_Scroll_Drag_FrameBufferCamera
     const uint VertexElementCount = (3 + 4); // X Y Z + R G B A
 
     const uint VertexElementByteSize = VertexElementCount * sizeof(float);
+    const uint TotalVertexElement = 128;
 
-    const uint VertexBufferByteTotalSize = 128 * VertexElementByteSize;
+    //const uint VertexBufferByteTotalSize = 128 * VertexElementByteSize;
 
-    uint VertexBufferBytesUsedCount = 0;
-    uint PreviousVertexBufferBytesUsedCount;
+    //uint VertexBufferBytesUsedCount = 0;
+    //uint PreviousVertexBufferBytesUsedCount;
 
-    uint VertexBufferElementsUsedCount = 0;
-    uint PreviousVertexBufferElementsUsedCount = 0;
+    //uint VertexBufferElementsUsedCount = 0;
+    //uint PreviousVertexBufferElementsUsedCount = 0;
 
     List<VertexBufferChunk> VertexBufferChunkList = new List<VertexBufferChunk>();
 
@@ -108,17 +102,14 @@ class _018_Frame_Buffer_Zoom_Scroll_Drag_FrameBufferCamera
 
     FramebufferCamera _camera;
 
-    public _018_Frame_Buffer_Zoom_Scroll_Drag_FrameBufferCamera()
-    {
-        Random = new Random(RandomSeed);
-    }
-
     public void Run(string[] args)
     {
+        Random = new Random(RandomSeed);
+
         var options = WindowOptions.Default;
 
         options.Size = new Vector2D<int>(_windowWidth, _windowHeight);
-        options.Title = "_018_Frame_Buffer_Zoom_Scroll_Drag_FrameBufferCamera";
+        options.Title = "_019_Frame_Vertex_Index_BufferObjects";
         options.VSync = false;
 
         bool isMac = OperatingSystem.IsMacOS();
@@ -197,23 +188,19 @@ class _018_Frame_Buffer_Zoom_Scroll_Drag_FrameBufferCamera
             //Gl.Enable((EnableCap)9999);
         }
 
-        //Creating a vertex array.
-        Vao = Gl.GenVertexArray();
-        Gl.BindVertexArray(Vao);
+        _vao = new VertexArrayObject(Gl);
 
+        // 2. Instantiate memory sizing properties via VBO Wrapper
+        _vbo = new VertexBufferObject(Gl, VertexElementByteSize, TotalVertexElement, BufferUsageARB.DynamicDraw);
 
-        //Initializing a vertex buffer that holds the vertex data.
-        Vbo = Gl.GenBuffer(); //Creating the buffer.
-        Gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo); //Binding the buffer.
-        Gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)VertexBufferByteTotalSize, null, BufferUsageARB.DynamicDraw); //Setting buffer data.
+        // 3. Define the layout specifications
+        VertexBufferLayout layout = new VertexBufferLayout();
+        layout.PushFloat(3); // Position Vector: X Y Z
+        layout.PushFloat(4); // Color Vector: R G B A
 
-        //Tell opengl how to give the data to the shaders.
-        Gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 7 * sizeof(float), null);
-        Gl.EnableVertexAttribArray(0);
-
-        Gl.VertexAttribPointer(1, 4, VertexAttribPointerType.Float, false, 7 * sizeof(float), (void*)(3 * sizeof(float)));
-        Gl.EnableVertexAttribArray(1);
-
+        // 4. Attach layout configurations securely inside our VAO object instance
+        _vao.AddBuffer(_vbo, layout);
+        _vao.Unbind();     
 
         _shader = new Shader(Gl, ".assets/.shaders/m_pos3_col4.vert", ".assets/.shaders/col4.frag");
 
@@ -251,13 +238,6 @@ class _018_Frame_Buffer_Zoom_Scroll_Drag_FrameBufferCamera
 
         FramebufferObject.Default.Bind(true);
 
-    }
-
-    private unsafe void SetupFramebuffer(ref FramebufferObject frameBuffer)
-    {
-        frameBuffer.Handle = Gl.GenFramebuffer();
-
-        frameBuffer.Resize((uint)(_windowWidth * _frameBufferScale), (uint)(_windowHeight * _frameBufferScale));
     }
 
     private unsafe void OnUpdate(double deltaTime)
@@ -345,11 +325,78 @@ class _018_Frame_Buffer_Zoom_Scroll_Drag_FrameBufferCamera
 
     }
 
+    private void OnFramebufferResize(Vector2D<int> size)
+    {
+        _windowWidth = size.X;
+        _windowHeight = size.Y;
+
+        _multiSampledFrameBuffer.Resize((uint)(_windowWidth * _frameBufferScale), (uint)(_windowHeight * _frameBufferScale));
+
+        _intermediateFrameBuffer.Resize((uint)(_windowWidth * _frameBufferScale), (uint)(_windowHeight * _frameBufferScale));
+    }
+
+    private void OnClose()
+    {
+        //_imGuiController?.Dispose();
+
+        FramebufferObject.Default.Bind(false);
+
+        _multiSampledFrameBuffer.Dispose();
+        _intermediateFrameBuffer.Dispose();
+
+        _vbo.Dispose();
+        _vao.Dispose();
+
+        //Gl.DeleteBuffer(Vbo);
+        //Gl.DeleteVertexArray(Vao);
+
+        _shader.Dispose();
+
+        Gl?.Dispose();
+    }
+
+    #region Input Event Handlers
+
+    private void KeyDown(IKeyboard keyboard, Key key, int arg3)
+    {
+        if (key == Key.Escape)
+        {
+            window.Close();
+        }
+
+        if (key == Key.S)
+        {
+            _intermediateFrameBuffer.SaveAsPng();
+        }
+    }
+    private void OnMouseDown(IMouse mouse, MouseButton button)
+    {
+    }
+
+    private void OnMouseUp(IMouse mouse, MouseButton button)
+    {
+    }
+
+    // We no longer manipulate the camera directly in OnMouseMove!
+    private void OnMouseMove(IMouse mouse, Vector2 _position)
+    {
+        // Leave this empty or use it for non-drag related features
+    }
+
+
+    private void OnMouseScroll(IMouse mouse, ScrollWheel scroll)
+    {
+    }
+
+    #endregion Input Event Handlers
+
     /// <summary>
     /// </summary>
     /// <param name="deltaTime"></param>
     private void GenerateAndDrawVertexBufferChunkList(double deltaTime)
     {
+        _vbo.Bind();
+
         ResetVertexBufferChunkList();
 
         LineChunkCount = RandomInt(MinLineChunkCount, MaxLineChunkCount);
@@ -431,68 +478,6 @@ class _018_Frame_Buffer_Zoom_Scroll_Drag_FrameBufferCamera
         DrawVertexBufferChunkList();
     }
 
-    private void OnFramebufferResize(Vector2D<int> size)
-    {
-        _windowWidth = size.X;
-        _windowHeight = size.Y;
-
-        _multiSampledFrameBuffer.Resize((uint)(_windowWidth * _frameBufferScale), (uint)(_windowHeight * _frameBufferScale));
-
-        _intermediateFrameBuffer.Resize((uint)(_windowWidth * _frameBufferScale), (uint)(_windowHeight * _frameBufferScale));
-    }
-
-    private void OnClose()
-    {
-        //_imGuiController?.Dispose();
-
-        FramebufferObject.Default.Bind(false);
-
-        _multiSampledFrameBuffer.Dispose();
-        _intermediateFrameBuffer.Dispose();
-
-        Gl.DeleteBuffer(Vbo);
-        Gl.DeleteVertexArray(Vao);
-
-        _shader.Dispose();
-
-        Gl?.Dispose();
-    }
-
-    #region Input Event Handlers
-
-    private void KeyDown(IKeyboard keyboard, Key key, int arg3)
-    {
-        if (key == Key.Escape)
-        {
-            window.Close();
-        }
-
-        if (key == Key.S)
-        {
-            _intermediateFrameBuffer.SaveAsPng();
-        }
-    }
-    private void OnMouseDown(IMouse mouse, MouseButton button)
-    {
-    }
-
-    private void OnMouseUp(IMouse mouse, MouseButton button)
-    {
-    }
-
-    // We no longer manipulate the camera directly in OnMouseMove!
-    private void OnMouseMove(IMouse mouse, Vector2 _position)
-    {
-        // Leave this empty or use it for non-drag related features
-    }
-
-
-    private void OnMouseScroll(IMouse mouse, ScrollWheel scroll)
-    {
-    }
-
-    #endregion Input Event Handlers
-
     private unsafe bool AddVertexBufferChunkToListAndBufferData(PrimitiveType primitiveType, ReadOnlySpan<float> data)
     {
         if (data.Length % VertexElementCount != 0)
@@ -506,91 +491,61 @@ class _018_Frame_Buffer_Zoom_Scroll_Drag_FrameBufferCamera
         var bytes = (uint)(data.Length * sizeof(float));
         var count = (uint)(data.Length / VertexElementCount);
 
-        if (VertexBufferBytesUsedCount + bytes > VertexBufferByteTotalSize)
+        //if (VertexBufferBytesUsedCount + bytes > VertexBufferByteTotalSize)
+        if (_vbo.CanWrite(bytes))
         {
             //Console.WriteLine("Vertex buffer full. Orphaning current buffer and starting a new one.");
 
             DrawVertexBufferChunkList();
 
-            OrphanVertexBuffer();
+            _vbo.Orphan();
 
             ResetVertexBufferChunkList();
 
             flushed = true;
         }
 
-
-        Gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo);
-
-        fixed (void* ptr = data)
-        {
-            Gl.BufferSubData(BufferTargetARB.ArrayBuffer, (nint)VertexBufferBytesUsedCount, (nuint)bytes, ptr);
-        }
+        _vbo.Write(data);
 
         var chunk = new VertexBufferChunk()
         {
-            Index = (int)VertexBufferElementsUsedCount,
+            //Index = (int)VertexBufferElementsUsedCount,
+            Index = (int)_vbo.UsedElements,
             Count = count,
             PrimitiveType = primitiveType,
         };
 
         VertexBufferChunkList.Add(chunk);
 
-        VertexBufferBytesUsedCount += bytes;
-        VertexBufferElementsUsedCount += count;
-
         return flushed;
     }
 
     private unsafe void DrawVertexBufferChunkList()
     {
-        //Gl.UseProgram(Shader);
         _shader.Use();
 
-        Gl.BindVertexArray(Vao);
-
-        //Gl.BindBuffer(BufferTargetARB.ArrayBuffer, ActiveVbo);
-
-        //int location = Gl.GetUniformLocation(Shader, "uModel");
-        int location = _shader.UniformLocation("uModel");
+        _vao.Bind();
 
         foreach (var vertexBufferChunk in VertexBufferChunkList)
         {
-            //var t = vertexBufferChunk.Transform.ViewMatrix;
-
-            //Gl.UniformMatrix4(location, 1, false, (float*)&t);
-
-            _shader.SetUniform(location, vertexBufferChunk.Transform.ViewMatrix);
+            _shader.SetUniform("uModel", vertexBufferChunk.Transform.ViewMatrix.ToSpan());
 
             //Draw the geometry.
             Gl.DrawArrays(vertexBufferChunk.PrimitiveType, vertexBufferChunk.Index, vertexBufferChunk.Count);
         }
 
-        if (PreviousVertexBufferBytesUsedCount != VertexBufferBytesUsedCount || PreviousVertexBufferElementsUsedCount != VertexBufferElementsUsedCount)
-        {
-            PreviousVertexBufferBytesUsedCount = VertexBufferBytesUsedCount;
-            PreviousVertexBufferElementsUsedCount = VertexBufferElementsUsedCount;
+        //if (PreviousVertexBufferBytesUsedCount != VertexBufferBytesUsedCount || PreviousVertexBufferElementsUsedCount != VertexBufferElementsUsedCount)
+        //{
+        //    PreviousVertexBufferBytesUsedCount = VertexBufferBytesUsedCount;
+        //    PreviousVertexBufferElementsUsedCount = VertexBufferElementsUsedCount;
 
-            //Console.WriteLine($"{VertexBufferBytesUsedCount} bytes used of {VertexBufferByteTotalSize} total bytes ({VertexBufferElementsUsedCount} elements)");
-        }
-    }
-
-    private unsafe void OrphanVertexBuffer()
-    {
-        // buffer orphaning is a performance optimization technique used to avoid CPU-GPU synchronization stalls when updating data in a Buffer Object (like a VBO or UBO).
-        // It works by telling the OpenGL driver to abandon the current memory allocation under the hood and replace it with a brand-new, clean block of memory.
-        // This allows the GPU to continue using the old buffer while we prepare a new one.
-        // we request a new memory buffer by calling glBufferData with the same size and usage flag and a null pointer for the data.
-        Gl.BindBuffer(BufferTargetARB.ArrayBuffer, Vbo);
-        Gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)VertexBufferByteTotalSize, null, BufferUsageARB.DynamicDraw);
-
-        // TODO: it might be quicker to use Persistent Mapped Buffers https://www.cppstories.com/2015/01/persistent-mapped-buffers-in-opengl/
+        //    //Console.WriteLine($"{VertexBufferBytesUsedCount} bytes used of {VertexBufferByteTotalSize} total bytes ({VertexBufferElementsUsedCount} elements)");
+        //}
     }
 
     private void ResetVertexBufferChunkList()
     {
-        VertexBufferBytesUsedCount = 0;
-        VertexBufferElementsUsedCount = 0;
+        _vbo.Clear();
         VertexBufferChunkList.Clear();
     }
 

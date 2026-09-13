@@ -1,10 +1,11 @@
 ﻿using Silk.NET.Input;
 using Silk.NET.Maths;
+using Silk.NET.Windowing;
 using System;
 
 namespace Scrbl.Tutorials;
 
-public class FrameBufferCamera
+public class FramebufferCamera
 {
     private readonly IInputContext _input;
 
@@ -32,35 +33,48 @@ public class FrameBufferCamera
     public float ViewWidth => _windowSize.X * _zoomLevel;
     public float ViewHeight => _windowSize.Y * _zoomLevel;
 
-    public FrameBufferCamera(IInputContext input, Vector2D<int> initialWindowSize, uint fbWidth, uint fbHeight)
+    public FramebufferCamera(IInputContext input, IWindow window, FramebufferObject frameBuffer)
     {
         _input = input ?? throw new ArgumentNullException(nameof(input));
-        _windowSize = initialWindowSize;
-        _fbWidth = fbWidth;
-        _fbHeight = fbHeight;
+        _windowSize = window.Size;
+        _fbWidth = frameBuffer.Width;
+        _fbHeight = frameBuffer.Height;
 
         // Default: Start centered relative to the overall backing Framebuffer texture bounds
         _cameraPos = new Vector2D<float>(_fbWidth / 2f, _fbHeight / 2f);
 
-        RegisterInputEvents();
-    }
+        window.Resize += OnWindowResize;
+        frameBuffer.ResizeAction += OnFrameBufferResize;
 
-    private void RegisterInputEvents()
-    {
         var mouse = _input.Mice[0];
         mouse.MouseDown += OnMouseDown;
         mouse.MouseUp += OnMouseUp;
         mouse.Scroll += OnMouseScroll;
     }
 
-    public void Resize(Vector2D<int> windowSize, uint fbWidth, uint fbHeight)
+    private void OnWindowResize(Vector2D<int> size)
     {
-        _windowSize = windowSize;
-        _fbWidth = fbWidth;
-        _fbHeight = fbHeight;
+        _windowSize = size;
 
         ClampPosition();
     }
+
+    private void OnFrameBufferResize(uint width, uint height)
+    {
+        _fbWidth = width;
+        _fbHeight = height;
+
+        ClampPosition();
+    }
+
+    //public void Resize(Vector2D<int> windowSize, uint fbWidth, uint fbHeight)
+    //{
+    //    _windowSize = windowSize;
+    //    _fbWidth = fbWidth;
+    //    _fbHeight = fbHeight;
+
+    //    ClampPosition();
+    //}
 
     public void Update()
     {
