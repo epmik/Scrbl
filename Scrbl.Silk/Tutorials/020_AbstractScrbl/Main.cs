@@ -71,54 +71,39 @@ class _020_AbstractScrbl : AbstractScrbl
                 .To(RandomFloat(-1, 1), RandomFloat(-0.5f, -1.0f));
         }
 
-        //var lineLoopChunkCount = RandomInt(MinLineLoopChunkCount, MaxLineLoopChunkCount);
+        var lineLoopChunkCount = RandomInt(MinLineLoopChunkCount, MaxLineLoopChunkCount);
 
-        //for (var k = 0; k < lineLoopChunkCount; k++)
-        //{
-        //    var lineLoopVertexCount = RandomInt(3, 7);
+        for (var k = 0; k < lineLoopChunkCount; k++)
+        {
+            var lineLoopVertexCount = RandomInt(3, 7);
 
-        //    for (var i = 0; i < lineLoopVertexCount; i++)
-        //    {
-        //        Line()
-        //            .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.50f, 1.0f), 1.0f)
-        //            .From(RandomFloat(-1, 1), RandomFloat(-1, 1))
-        //            .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.50f, 1.0f), 1.0f)
-        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-        //            .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.50f, 1.0f), 1.0f)
-        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-        //            .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.50f, 1.0f), 1.0f)
-        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-        //            .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.50f, 1.0f), 1.0f)
-        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-        //            .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.50f, 1.0f), 1.0f)
-        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-        //            .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.50f, 1.0f), 1.0f)
-        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-        //            .Close();
-        //    }
-        //}
+            var builder = Line();
 
-        //var lineStripChunkCount = RandomInt(MinLineStripChunkCount, MaxLineStripChunkCount);
+            for (var i = 0; i < lineLoopVertexCount; i++)
+            {
+                builder
+                    .Color(0.0f, RandomFloat(0.85f, 1.0f), 0.0f, 1.0f)
+                    .To(RandomFloat(-1, 1), RandomFloat(-1, 1));
+            }
 
-        //for (var k = 0; k < lineStripChunkCount; k++)
-        //{
-        //    var lineStripVertexCount = RandomInt(3, 7);
+            builder.Close();
+        }
 
-        //    for (var i = 0; i < lineStripVertexCount; i++)
-        //    {
-        //        Line()
-        //            .Color(0.0f, RandomFloat(0.85f, 1.0f), 1.0f, 1.0f)
-        //            .From(RandomFloat(-1, 1), RandomFloat(-1, 1))
-        //            .Color(0.0f, RandomFloat(0.85f, 1.0f), 1.0f, 1.0f)
-        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-        //            .Color(0.0f, RandomFloat(0.85f, 1.0f), 1.0f, 1.0f)
-        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-        //            .Color(0.0f, RandomFloat(0.85f, 1.0f), 1.0f, 1.0f)
-        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1))
-        //            .Color(0.0f, RandomFloat(0.85f, 1.0f), 1.0f, 1.0f)
-        //            .To(RandomFloat(-1, 1), RandomFloat(-1, 1));
-        //    }
-        //}
+        var lineStripChunkCount = RandomInt(MinLineStripChunkCount, MaxLineStripChunkCount);
+
+        for (var k = 0; k < lineStripChunkCount; k++)
+        {
+            var lineStripVertexCount = RandomInt(3, 7);
+
+            var builder = Line();
+
+            for (var i = 0; i < lineStripVertexCount; i++)
+            {
+                Line()
+                    .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.85f, 1.0f), 1.0f)
+                    .To(RandomFloat(-1, 1), RandomFloat(-1, 1));
+            }
+        }
     }
 
     // Optional Event Callbacks managed smoothly via engine reflection tracking layers
