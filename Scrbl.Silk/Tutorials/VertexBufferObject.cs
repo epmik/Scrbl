@@ -75,7 +75,7 @@ public class VertexBufferObject : IDisposable
 
     public void Dispose()
     {
-        AssertIsNotBound();
+        Unbind();
         _gl.DeleteBuffer(Handle);
     }
 
@@ -99,12 +99,12 @@ public class VertexBufferObject : IDisposable
         }
     }
 
-    [Conditional("DEBUG")]
-    private void AssertIsNotBound()
-    {
-        if (_isBound)
-        {
-            throw new InvalidOperationException("Cannot perform operation: The VertexBufferObject is bound.");
-        }
-    }
+    //[Conditional("DEBUG")]
+    //private void AssertIsNotBound()
+    //{
+    //    if (_isBound)
+    //    {
+    //        throw new InvalidOperationException("Cannot perform operation: The VertexBufferObject is bound.");
+    //    }
+    //}
 }
