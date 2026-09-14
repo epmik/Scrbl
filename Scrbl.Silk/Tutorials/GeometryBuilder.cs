@@ -33,7 +33,7 @@ namespace Scrbl.Tutorials
         private void Reset()
         {
             _vertexCount = 0;
-            _r = 1.0f; _g = 1.0f; _b = 1.0f; _a = 1.0f; // Default White
+            _r = 0.0f; _g = 0.0f; _b = 0.0f; _a = 1.0f; // Default Black
             _hasForcedType = false;
             _forcedType = PrimitiveType.Lines;
         }

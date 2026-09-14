@@ -47,7 +47,7 @@ namespace Scrbl.Tutorials
 
         private int _windowWidth = 800;
         private int _windowHeight = 600;
-        private double _frameBufferScale = 4.0;
+        private double _frameBufferScale = 2.0;
 
         private readonly List<VertexBufferChunk> _chunks = new();
 
@@ -197,7 +197,9 @@ namespace Scrbl.Tutorials
             Gl.Clear((uint)ClearBufferMask.ColorBufferBit);
 
             _multiSampledFrameBuffer.BlitTo(_intermediateFrameBuffer);
-            _intermediateFrameBuffer.BlitToScreen(_camera.SourceX, _camera.SourceY, (int)_camera.ViewWidth, (int)_camera.ViewHeight);
+
+            //_intermediateFrameBuffer.BlitToScreen(_camera.SourceX, _camera.SourceY, (int)_camera.ViewWidth, (int)_camera.ViewHeight);
+            _intermediateFrameBuffer.BlitToScreen(0, 0, (int)_intermediateFrameBuffer.Width, (int)_intermediateFrameBuffer.Height);
 
             _imGuiController.Render();
         }

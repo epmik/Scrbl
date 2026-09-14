@@ -99,7 +99,7 @@ class _020_AbstractScrbl : AbstractScrbl
 
             for (var i = 0; i < lineStripVertexCount; i++)
             {
-                Line()
+                builder
                     .Color(0.0f, RandomFloat(0.50f, 1.0f), RandomFloat(0.85f, 1.0f), 1.0f)
                     .To(RandomFloat(-1, 1), RandomFloat(-1, 1));
             }
