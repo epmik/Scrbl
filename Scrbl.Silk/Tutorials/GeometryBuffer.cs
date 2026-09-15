@@ -9,12 +9,12 @@ using System;
 
 namespace Scrbl.Tutorials;
 
-public class VertexArrayObject : IDisposable
+public class GeometryBuffer : IDisposable
 {
     private readonly GL _gl;
     public uint Handle { get; private set; }
 
-    public VertexArrayObject(GL gl)
+    public GeometryBuffer(GL gl)
     {
         _gl = gl;
         Handle = _gl.GenVertexArray();

@@ -58,6 +58,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include=".assets\.shaders\mvp_pos3_col4.vert">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include=".assets\.shaders\m_pos3_col4.vert">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

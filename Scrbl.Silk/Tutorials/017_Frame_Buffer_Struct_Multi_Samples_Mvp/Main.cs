@@ -17,8 +17,317 @@ using System.Runtime.InteropServices;
 
 namespace Scrbl.Tutorials;
 
-class _017_Frame_Buffer_Struct_Multi_Samples
+class _017_Frame_Buffer_Struct_Multi_Samples_Mvp
 {
+    public class Camera : IDisposable
+    {
+        private readonly IWindow _window;
+        private readonly IInputContext _input;
+
+        // --- Input Tracking & Settings ---
+        private readonly HashSet<Key> _pressedKeys = new();
+        private Vector2 _lastMousePosition;
+        private bool _isFirstMousePos = true;
+        private Vector2 _mouseDelta;
+        private float _scrollDelta;
+
+        // Rebindable Keyboard Controls (Configured for AZERTY by default)
+        public Key KeyForward { get; set; } = Key.Z;   // Z instead of W
+        public Key KeyBackward { get; set; } = Key.S;  // S
+        public Key KeyLeft { get; set; } = Key.Q;      // Q instead of A
+        public Key KeyRight { get; set; } = Key.D;     // D
+        public Key KeyUp { get; set; } = Key.Space;    // Space
+        public Key KeyDown { get; set; } = Key.ControlLeft;
+
+        // Keyboard Roll Keys
+        public Key KeyRollLeft { get; set; } = Key.A;  // Custom assignment
+        public Key KeyRollRight { get; set; } = Key.E;
+
+        // --- Transform States ---
+        public Vector3 Position { get; set; } = Vector3.Zero;
+        public Quaternion Rotation { get; set; } = Quaternion.Identity;
+
+        private float _pitch;
+        private float _yaw;
+        private float _roll;
+
+        // Smooth Damping Physics Velocities
+        private Vector3 _currentMovementVelocity = Vector3.Zero;
+        private float _currentPitchVelocity = 0f;
+        private float _currentYawVelocity = 0f;
+        private float _currentRollVelocity = 0f;
+
+        // --- Configuration Properties ---
+
+        // Core Vectors Controls (Replaces AllowUpDown, AllowStrafe, etc.)
+        public Vector3 MovementAxisLock { get; set; } = Vector3.One; // E.g., new Vector3(1, 0, 1) locks vertical movement
+
+        // Rotational Constraints (Radians)
+        public float? MinPitch { get; set; } = null;
+        public float? MaxPitch { get; set; } = null;
+        public float? MinYaw { get; set; } = null;
+        public float? MaxYaw { get; set; } = null;
+        public float? MinRoll { get; set; } = null;
+        public float? MaxRoll { get; set; } = null;
+
+        // Fine-Grained Linear & Angular Speed Profiles
+        public float MoveSpeedForward { get; set; } = 5.0f;
+        public float MoveSpeedBackward { get; set; } = 5.0f;
+        public float MoveSpeedLeft { get; set; } = 5.0f;
+        public float MoveSpeedRight { get; set; } = 5.0f;
+        public float MoveSpeedUp { get; set; } = 5.0f;
+        public float MoveSpeedDown { get; set; } = 5.0f;
+
+        public float RotateSpeedUp { get; set; } = 1.5f;
+        public float RotateSpeedDown { get; set; } = 1.5f;
+        public float RotateSpeedLeft { get; set; } = 1.5f;
+        public float RotateSpeedRight { get; set; } = 1.5f;
+        public float RotateSpeedRollLeft { get; set; } = 1.5f;
+        public float RotateSpeedRollRight { get; set; } = 1.5f;
+
+        public float ScrollSensitivity { get; set; } = 0.5f;
+
+        // --- Damping (Smoothing) Settings ---
+        public bool UseDamping { get; set; } = true;
+        public float DampingFactor { get; set; } = 10.0f; // Higher values = snappier, Lower = driftier/smoother
+
+        // --- Lens & Projection Properties ---
+        public bool IsOrthographic { get; set; } = false;
+        public float AspectRatio { get; private set; } = 1.0f;
+        public float NearPlane { get; set; } = 0.1f;
+        public float FarPlane { get; set; } = 1000.0f;
+        public float FieldOfView { get; set; } = MathF.PI / 3.0f;
+        public float OrthographicSize { get; set; } = 800.0f; // Height of view window in world units for Ortho mode
+
+        public Camera(IWindow window, IInputContext input)
+        {
+            _window = window ?? throw new ArgumentNullException(nameof(window));
+            _input = input ?? throw new ArgumentNullException(nameof(input));
+
+            UpdateAspectRatio(_window.Size);
+            _window.Resize += OnWindowResize;
+
+            foreach (var keyboard in _input.Keyboards)
+            {
+                keyboard.KeyDown += OnKeyDown;
+                keyboard.KeyUp += OnKeyUp;
+            }
+
+            foreach (var mouse in _input.Mice)
+            {
+                mouse.MouseMove += OnMouseMove;
+                mouse.Scroll += OnMouseScroll;
+            }
+        }
+
+        /// <summary>
+        /// Configures mouse capture mode options.
+        /// useRawInput = true unlocks boundless hardware frames (best for 3D look).
+        /// useRawInput = false locks/hides mouse cursor conventionally.
+        /// </summary>
+        public void SetMouseCapture(bool enabled, bool useRawInput = true)
+        {
+            foreach (var mouse in _input.Mice)
+            {
+                if (enabled)
+                {
+                    mouse.Cursor.CursorMode = useRawInput ? CursorMode.Raw : CursorMode.Disabled;
+                }
+                else
+                {
+                    mouse.Cursor.CursorMode = CursorMode.Normal;
+                }
+            }
+            _isFirstMousePos = true; // Reset mouse baseline tracking on toggle
+        }
+
+        public void Update(double deltaTime)
+        {
+            float dt = (float)deltaTime;
+
+            HandleRotationTick(dt);
+            HandleMovementTick(dt);
+            HandleZoomTick(dt);
+        }
+
+        private void HandleMovementTick(float dt)
+        {
+            Vector3 forward = Vector3.Transform(-Vector3.UnitZ, Rotation);
+            Vector3 right = Vector3.Transform(Vector3.UnitX, Rotation);
+            Vector3 up = Vector3.Transform(Vector3.UnitY, Rotation);
+
+            Vector3 targetVelocity = Vector3.Zero;
+
+            // Build target velocities mapped directly to custom bound key structures
+            if (_pressedKeys.Contains(KeyForward)) targetVelocity += forward * MoveSpeedForward;
+            if (_pressedKeys.Contains(KeyBackward)) targetVelocity -= forward * MoveSpeedBackward;
+            if (_pressedKeys.Contains(KeyRight)) targetVelocity += right * MoveSpeedRight;
+            if (_pressedKeys.Contains(KeyLeft)) targetVelocity -= right * MoveSpeedLeft;
+            if (_pressedKeys.Contains(KeyUp)) targetVelocity += up * MoveSpeedUp;
+            if (_pressedKeys.Contains(KeyDown)) targetVelocity -= up * MoveSpeedDown;
+
+            // Enforce structural axis filters globally
+            targetVelocity *= MovementAxisLock;
+
+            if (UseDamping)
+            {
+                // Linear Interpolation over structural time slices
+                _currentMovementVelocity = Vector3.Lerp(_currentMovementVelocity, targetVelocity, DampingFactor * dt);
+            }
+            else
+            {
+                _currentMovementVelocity = targetVelocity;
+            }
+
+            Position += _currentMovementVelocity * dt;
+        }
+
+        private void HandleRotationTick(float dt)
+        {
+            float targetPitchVel = 0f;
+            float targetYawVel = 0f;
+            float targetRollVel = 0f;
+
+            // 1. Evaluate Target Rotational Velocities from Mouse Look
+            if (_mouseDelta != Vector2.Zero)
+            {
+                float pitchSpeed = _mouseDelta.Y < 0 ? RotateSpeedUp : RotateSpeedDown;
+                float yawSpeed = _mouseDelta.X < 0 ? RotateSpeedLeft : RotateSpeedRight;
+
+                targetPitchVel = -_mouseDelta.Y * pitchSpeed;
+                targetYawVel = -_mouseDelta.X * yawSpeed;
+
+                _mouseDelta = Vector2.Zero; // Consume immediately
+            }
+
+            // 2. Evaluate Target Velocities from Keyboard Roll
+            if (_pressedKeys.Contains(KeyRollRight)) targetRollVel = RotateSpeedRollRight;
+            if (_pressedKeys.Contains(KeyRollLeft)) targetRollVel = -RotateSpeedRollLeft;
+
+            if (UseDamping)
+            {
+                // Smoothly damp rotational speeds independently
+                _currentPitchVelocity = MathF.IEEERemainder(float.Lerp(_currentPitchVelocity, targetPitchVel, DampingFactor * dt), float.MaxValue);
+                _currentYawVelocity = MathF.IEEERemainder(float.Lerp(_currentYawVelocity, targetYawVel, DampingFactor * dt), float.MaxValue);
+                _currentRollVelocity = MathF.IEEERemainder(float.Lerp(_currentRollVelocity, targetRollVel, DampingFactor * dt), float.MaxValue);
+            }
+            else
+            {
+                _currentPitchVelocity = targetPitchVel;
+                _currentYawVelocity = targetYawVel;
+                _currentRollVelocity = targetRollVel;
+            }
+
+            // Apply velocities to coordinates
+            _pitch += _currentPitchVelocity * dt;
+            _yaw += _currentYawVelocity * dt;
+            _roll += _currentRollVelocity * dt;
+
+            // 3. Enforce Clamps
+            if (MinPitch.HasValue) _pitch = MathF.Max(_pitch, MinPitch.Value);
+            if (MaxPitch.HasValue) _pitch = MathF.Min(_pitch, MaxPitch.Value);
+            if (MinYaw.HasValue) _yaw = MathF.Max(_yaw, MinYaw.Value);
+            if (MaxYaw.HasValue) _yaw = MathF.Min(_yaw, MaxYaw.Value);
+            if (MinRoll.HasValue) _roll = MathF.Max(_roll, MinRoll.Value);
+            if (MaxRoll.HasValue) _roll = MathF.Min(_roll, MaxRoll.Value);
+
+            Rotation = Quaternion.CreateFromYawPitchRoll(_yaw, _pitch, _roll);
+        }
+
+        private void HandleZoomTick(float dt)
+        {
+            if (_scrollDelta != 0)
+            {
+                if (IsOrthographic)
+                {
+                    // In Ortho mode, zooming modifies the view window boundaries instead of the lens FOV
+                    OrthographicSize -= _scrollDelta * ScrollSensitivity * 50f * dt;
+                    OrthographicSize = float.Max(OrthographicSize, 10f); // Guard against inversion
+                }
+                else
+                {
+                    FieldOfView -= _scrollDelta * ScrollSensitivity * dt;
+                    FieldOfView = float.Clamp(FieldOfView, MathF.PI / 12.0f, MathF.PI / 2.0f);
+                }
+
+                _scrollDelta = 0f;
+            }
+        }
+
+        private void OnKeyDown(IKeyboard keyboard, Key key, int keyCode) => _pressedKeys.Add(key);
+        private void OnKeyUp(IKeyboard keyboard, Key key, int keyCode) => _pressedKeys.Remove(key);
+
+        private void OnMouseMove(IMouse mouse, Vector2 position)
+        {
+            if (_isFirstMousePos)
+            {
+                _lastMousePosition = position;
+                _isFirstMousePos = false;
+                return;
+            }
+
+            _mouseDelta += new Vector2(position.X - _lastMousePosition.X, position.Y - _lastMousePosition.Y);
+            _lastMousePosition = position;
+        }
+
+        private void OnMouseScroll(IMouse mouse, ScrollWheel scroll) => _scrollDelta += scroll.Y;
+
+        private void OnWindowResize(Vector2D<int> size) => UpdateAspectRatio(size);
+
+        private void UpdateAspectRatio(Vector2D<int> size)
+        {
+            AspectRatio = (float)size.X / (float)size.Y;
+        }
+
+        public void ConfigurePixelPerfectOrthoMatch(float targetWidth, float targetHeight)
+        {
+            Rotation = Quaternion.Identity;
+            if (IsOrthographic)
+            {
+                // Match screen heights cleanly
+                OrthographicSize = targetHeight;
+                Position = new Vector3(0, 0, 10.0f);
+                // Arbitrary distance since distance doesn't affect scale in Ortho
+            }
+            else
+            {
+                float halfTargetWidth = targetWidth / 2.0f;
+                float halfTargetHeight = targetHeight / 2.0f;
+                float distanceToFitVertical = halfTargetHeight / MathF.Tau * (MathF.PI / FieldOfView);
+                float distanceToFitHorizontal = (halfTargetWidth / AspectRatio) / MathF.Tau * (MathF.PI / FieldOfView);
+                Position = new Vector3(0, 0, MathF.Max(distanceToFitVertical, distanceToFitHorizontal));
+            }
+        }
+
+        public Matrix4x4 GetViewMatrix() => Matrix4x4.CreateLookAt(Position, Position + Vector3.Transform(-Vector3.UnitZ, Rotation), Vector3.Transform(Vector3.UnitY, Rotation));
+
+        public Matrix4x4 GetProjectionMatrix()
+        {
+            if (IsOrthographic)
+            {
+                float orthoWidth = OrthographicSize * AspectRatio;
+                return Matrix4x4.CreateOrthographic(orthoWidth, OrthographicSize, NearPlane, FarPlane);
+            }
+            return Matrix4x4.CreatePerspectiveFieldOfView(FieldOfView, AspectRatio, NearPlane, FarPlane);
+        }
+
+        public void Dispose()
+        {
+            _window.Resize -= OnWindowResize;
+
+            foreach (var keyboard in _input.Keyboards)
+            {
+                keyboard.KeyDown -= OnKeyDown; keyboard.KeyUp -= OnKeyUp;
+            }
+
+            foreach (var mouse in _input.Mice)
+            {
+                mouse.MouseMove -= OnMouseMove;
+                mouse.Scroll -= OnMouseScroll;
+            }
+        }
+    }
+
     struct VertexBufferChunk
     {
         public Transform Transform;
@@ -132,14 +441,16 @@ class _017_Frame_Buffer_Struct_Multi_Samples
         layout (location = 0) in vec3 vPos;
         layout (location = 1) in vec4 vCol;
     
-        uniform mat4 uModel;    
+        uniform mat4 uModel;
+        uniform mat4 uView;
+        uniform mat4 uProjection;
 
         out vec4 fCol;
 
         void main()
         {
             //gl_Position =  vec4(vPos, 1.0);
-            gl_Position =  uModel * vec4(vPos, 1.0);
+            gl_Position =  uProjection * uView * uModel * vec4(vPos, 1.0);
             fCol = vCol;
         }
         ";
@@ -174,7 +485,9 @@ class _017_Frame_Buffer_Struct_Multi_Samples
 
     IInputContext input;
 
-    public _017_Frame_Buffer_Struct_Multi_Samples()
+    Camera _camera;
+
+    public _017_Frame_Buffer_Struct_Multi_Samples_Mvp()
     {
         Random = new Random(RandomSeed);
 
@@ -198,7 +511,7 @@ class _017_Frame_Buffer_Struct_Multi_Samples
         var options = WindowOptions.Default;
 
         options.Size = new Vector2D<int>(_windowWidth, _windowHeight);
-        options.Title = "_017_Frame_Buffer_Struct_Multi_Samples";
+        options.Title = "_017_Frame_Buffer_Struct_Multi_Samples_Mvp";
         options.VSync = false;
 
         bool isMac = OperatingSystem.IsMacOS();
@@ -348,6 +661,14 @@ class _017_Frame_Buffer_Struct_Multi_Samples
 
         BindScreenFramebuffer();
 
+        _camera = new Camera(window, input)
+        {
+            KeyForward = Key.Z,
+            KeyBackward = Key.S,
+            KeyLeft = Key.Q,
+            KeyRight = Key.D,
+        };
+
     }
 
     private unsafe void SetupFramebuffer(ref FrameBuffer frameBuffer)
@@ -419,6 +740,8 @@ class _017_Frame_Buffer_Struct_Multi_Samples
 
     private unsafe void OnUpdate(double deltaTime)
     {
+        _camera.Update(deltaTime);
+
         // 1. Make sure to feed ImGui the latest time step input
         _imGuiController.Update((float)deltaTime);
 
@@ -487,16 +810,9 @@ class _017_Frame_Buffer_Struct_Multi_Samples
         // 3. Command the controller wrapper to render structures to the backbuffer
         _imGuiController.Render();
 
-        if(_multiSampledFrameBuffer.Samples > 1)
-        {
-            BlitFramebuffer(_multiSampledFrameBuffer, _intermediateFrameBuffer);
+        BlitFramebuffer(_multiSampledFrameBuffer, _intermediateFrameBuffer);
 
-            BlitFramebufferToScreen(_intermediateFrameBuffer);
-        }
-        else
-        {
-            BlitFramebufferToScreen(_multiSampledFrameBuffer);
-        }
+        BlitFramebufferToScreen(_intermediateFrameBuffer);
     }
 
     /// <summary>
@@ -603,6 +919,8 @@ class _017_Frame_Buffer_Struct_Multi_Samples
 
         BindScreenFramebuffer();
 
+        _camera.Dispose();
+
         DisposeFramebuffer(_multiSampledFrameBuffer);
         DisposeFramebuffer(_intermediateFrameBuffer);
 
@@ -619,7 +937,7 @@ class _017_Frame_Buffer_Struct_Multi_Samples
             window.Close();
         }
 
-        if (key == Key.S)
+        if (key == Key.F5)
         {
             SaveFramebuffer(Gl, (int)_multiSampledFrameBuffer.Width, (int)_multiSampledFrameBuffer.Height, $"framebuffer_{DateTime.Now:yyyyMMdd_HHmmss}.png");
 
@@ -684,13 +1002,23 @@ class _017_Frame_Buffer_Struct_Multi_Samples
 
         //Gl.BindBuffer(BufferTargetARB.ArrayBuffer, ActiveVbo);
 
-        int location = Gl.GetUniformLocation(Shader, "uModel");
+        int locationModelMatrix = Gl.GetUniformLocation(Shader, "uModel");
+        int locationViewMatrix = Gl.GetUniformLocation(Shader, "uView");
+        int locationProjectionMatrix = Gl.GetUniformLocation(Shader, "uProjection");
+
+        //var viewMatrix = Matrix4x4.CreateLookAt(new Vector3(0.1f, 0, 0), new Vector3(0.1f, 0, -1), new Vector3(0, 1, 0));
+        //var projectionMatrix = Matrix4x4.Identity;
+
+        var viewMatrix = _camera.GetViewMatrix();
+        var projectionMatrix = Matrix4x4.Identity;
 
         foreach (var vertexBufferChunk in VertexBufferChunkList)
         {
             var t = vertexBufferChunk.Transform.ViewMatrix;
 
-            Gl.UniformMatrix4(location, 1, false, (float*)&t);
+            Gl.UniformMatrix4(locationModelMatrix, 1, false, (float*)&t);
+            Gl.UniformMatrix4(locationViewMatrix, 1, false, (float*)&viewMatrix);
+            Gl.UniformMatrix4(locationProjectionMatrix, 1, false, (float*)&projectionMatrix);
 
             //Draw the geometry.
             Gl.DrawArrays(vertexBufferChunk.PrimitiveType, vertexBufferChunk.Index, vertexBufferChunk.Count);

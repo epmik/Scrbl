@@ -12,17 +12,19 @@ namespace Scrbl.Tutorials;
 public class VertexBufferLayout
 {
     public List<VertexBufferElement> Elements { get; private set; } = new();
+    
     public uint Stride { get; private set; } = 0;
 
-    public void PushFloat(uint count)
+    public void PushElement(string name, uint count, VertexBufferElementType type, bool normalized = false)
     {
         Elements.Add(new VertexBufferElement
         {
+            Name = name,
             Count = count,
-            Type = VertexAttribPointerType.Float,
-            Normalized = false
+            Type = type,
+            Normalized = normalized
         });
-        Stride += count * VertexBufferElement.GetSizeOfType(VertexAttribPointerType.Float);
+        Stride += count * VertexBufferElement.Size(type);
     }
 
     // Add additional types (PushUInt, PushByte) here as needed later

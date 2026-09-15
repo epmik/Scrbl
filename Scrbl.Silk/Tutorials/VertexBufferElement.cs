@@ -9,19 +9,28 @@ using System;
 
 namespace Scrbl.Tutorials;
 
+public enum VertexBufferElementType
+{
+    Float = VertexAttribPointerType.Float,
+    UnsignedInt = VertexAttribPointerType.UnsignedInt,
+    UnsignedShort = VertexAttribPointerType.UnsignedShort,
+    UnsignedByte = VertexAttribPointerType.UnsignedByte,
+}
+
 public struct VertexBufferElement
 {
+    public string Name;
     public uint Count;
-    public VertexAttribPointerType Type;
+    public VertexBufferElementType Type;
     public bool Normalized;
 
-    public static uint GetSizeOfType(VertexAttribPointerType type)
+    public static uint Size(VertexBufferElementType type)
     {
         return type switch
         {
-            VertexAttribPointerType.Float => sizeof(float),
-            VertexAttribPointerType.UnsignedInt => sizeof(uint),
-            VertexAttribPointerType.UnsignedByte => sizeof(byte),
+            VertexBufferElementType.Float => sizeof(float),
+            VertexBufferElementType.UnsignedInt => sizeof(uint),
+            VertexBufferElementType.UnsignedByte => sizeof(byte),
             _ => throw new ArgumentException($"Unsupported Attribute Type: {type}")
         };
     }

@@ -46,6 +46,8 @@ public class FramebufferCamera
         window.Resize += OnWindowResize;
         frameBuffer.ResizeAction += OnFrameBufferResize;
 
+        var keyboard = _input.Keyboards[0];
+
         var mouse = _input.Mice[0];
         mouse.MouseDown += OnMouseDown;
         mouse.MouseUp += OnMouseUp;

@@ -195,8 +195,9 @@ class _019_Frame_Vertex_Index_BufferObjects
 
         // 3. Define the layout specifications
         VertexBufferLayout layout = new VertexBufferLayout();
-        layout.PushFloat(3); // Position Vector: X Y Z
-        layout.PushFloat(4); // Color Vector: R G B A
+
+        layout.PushElement("vPos", 3, VertexBufferElementType.Float, false); // Position Vector: X Y Z
+        layout.PushElement("vCol", 4, VertexBufferElementType.Float, false); // Color Vector: R G B A
 
         // 4. Attach layout configurations securely inside our VAO object instance
         _vao.AddBuffer(_vbo, layout);

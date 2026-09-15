@@ -134,8 +134,8 @@ namespace Scrbl.Tutorials
             _vbo = new VertexBufferObject(Gl, VertexElementCount * sizeof(float), 2048, BufferUsageARB.DynamicDraw);
 
             var layout = new VertexBufferLayout();
-            layout.PushFloat(3); // Pos
-            layout.PushFloat(4); // Color
+            layout.PushElement("vPos", 3, VertexBufferElementType.Float, false); // Pos
+            layout.PushElement("vCol", 4, VertexBufferElementType.Float, false); // Color
             _vao.AddBuffer(_vbo, layout);
             _vao.Unbind();
 
